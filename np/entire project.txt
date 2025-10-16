@@ -1,0 +1,1208 @@
+//index.php
+<?php
+session_start();
+require_once 'config/db.php';
+
+// Check if admin is logged in
+// if (!isset($_SESSION['admin_id'])) {
+//     header('Location: login.php');
+//     exit();
+// }
+
+// Fetch dashboard statistics
+$stats = [
+    'total_accounts' => 0,
+    'total_leagues' => 0,
+    'active_leagues' => 0,
+    'total_players' => 0,
+    'total_teams' => 0,
+    'total_matches' => 0
+];
+
+try {
+    // Total Accounts
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM accounts");
+    $stats['total_accounts'] = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+    
+    // Total Leagues
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM leagues");
+    $stats['total_leagues'] = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+    
+    // Active Leagues
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM leagues WHERE activated = 1");
+    $stats['active_leagues'] = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+    
+    // Total Players
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM league_players");
+    $stats['total_players'] = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+    
+    // Total Teams
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM league_teams");
+    $stats['total_teams'] = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+    
+    // Total Matches
+    $stmt = $pdo->query("SELECT COUNT(*) as count FROM matches");
+    $stats['total_matches'] = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
+    
+    // Recent Leagues
+    $stmt = $pdo->query("SELECT l.*, a.username as owner_name 
+                         FROM leagues l 
+                         LEFT JOIN accounts a ON l.owner = a.id 
+                         ORDER BY l.created_at DESC 
+                         LIMIT 5");
+    $recent_leagues = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Recent Accounts
+    $stmt = $pdo->query("SELECT * FROM accounts ORDER BY created_at DESC LIMIT 5");
+    $recent_accounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+} catch (PDOException $e) {
+    $error_message = "Database error: " . $e->getMessage();
+}
+
+include 'includes/header.php';
+include 'includes/sidebar.php';
+?>
+
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
+    
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: 'Roboto', sans-serif;
+    }
+    
+    .main-content {
+        margin-left: 280px;
+        padding: 30px;
+        background: #f5f7fa;
+        min-height: calc(100vh - 70px);
+    }
+    
+    .dashboard-header {
+        margin-bottom: 30px;
+    }
+    
+    .dashboard-header h1 {
+        font-size: 32px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #1D60AC, #0A92D7);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 5px;
+    }
+    
+    .dashboard-header p {
+        color: #666;
+        font-size: 14px;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: #FFFFFF;
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        border-left: 4px solid #1D60AC; /* Standardized to primary color */
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+    }
+    
+    .stat-card.primary {
+        border-left-color: #1D60AC;
+    }
+    
+    .stat-card.secondary {
+        border-left-color: #F1A155;
+    }
+    
+    .stat-card.info {
+        border-left-color: #0A92D7;
+    }
+    
+    .stat-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .stat-card-title {
+        font-size: 14px;
+        color: #666;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .stat-card-icon {
+        width: 45px;
+        height: 45px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        color: #FFFFFF;
+    }
+    
+    .icon-primary {
+        background: linear-gradient(135deg, #1D60AC, #0A92D7);
+    }
+    
+    .icon-secondary {
+        background: #F1A155;
+    }
+    
+    .stat-card-value {
+        font-size: 36px;
+        font-weight: 700;
+        color: #000000;
+    }
+    
+    .data-section {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+        gap: 25px;
+        margin-bottom: 30px;
+    }
+    
+    .data-card {
+        background: #FFFFFF;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        overflow: hidden;
+    }
+    
+    .data-card-header {
+        background: linear-gradient(135deg, #1D60AC, #0A92D7);
+        color: #FFFFFF;
+        padding: 20px 25px;
+        font-size: 18px;
+        font-weight: 600;
+    }
+    
+    .data-card-body {
+        padding: 25px;
+    }
+    
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .data-table thead {
+        background: #f8f9fa;
+    }
+    
+    .data-table th {
+        padding: 12px;
+        text-align: left;
+        font-size: 13px;
+        font-weight: 600;
+        color: #333;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-bottom: 2px solid #e9ecef;
+    }
+    
+    .data-table td {
+        padding: 12px;
+        border-bottom: 1px solid #e9ecef;
+        color: #666;
+        font-size: 14px;
+    }
+    
+    .data-table tr:hover {
+        background: #f8f9fa;
+    }
+    
+    .badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    
+    .badge-success {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .badge-danger {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    
+    .badge-warning {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .badge-info {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    @media (max-width: 768px) {
+        .main-content {
+            margin-left: 0;
+            padding: 15px;
+        }
+        
+        .stats-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .data-section {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="main-content">
+    <div class="dashboard-header">
+        <h1>Dashboard Overview</h1>
+        <p>Welcome to Fantaziko Admin Panel</p>
+    </div>
+    
+    <?php if (isset($error_message)): ?>
+        <div style="background: #f8d7da; color: #721c24; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+            <?php echo htmlspecialchars($error_message); ?>
+        </div>
+    <?php endif; ?>
+    
+        <div class="stats-grid">
+        <div class="stat-card primary">
+            <div class="stat-card-header">
+                <span class="stat-card-title">Total Accounts</span>
+                <div class="stat-card-icon icon-primary">👥</div>
+            </div>
+            <div class="stat-card-value"><?php echo number_format($stats['total_accounts']); ?></div>
+        </div>
+        
+        <div class="stat-card primary">
+            <div class="stat-card-header">
+                <span class="stat-card-title">Total Leagues</span>
+                <div class="stat-card-icon icon-primary">🏆</div>
+            </div>
+            <div class="stat-card-value"><?php echo number_format($stats['total_leagues']); ?></div>
+        </div>
+        
+        <div class="stat-card primary">
+            <div class="stat-card-header">
+                <span class="stat-card-title">Active Leagues</span>
+                <div class="stat-card-icon icon-primary">✓</div>
+            </div>
+            <div class="stat-card-value"><?php echo number_format($stats['active_leagues']); ?></div>
+        </div>
+        
+        <div class="stat-card primary">
+            <div class="stat-card-header">
+                <span class="stat-card-title">Total Players</span>
+                <div class="stat-card-icon icon-primary">⚽</div>
+            </div>
+            <div class="stat-card-value"><?php echo number_format($stats['total_players']); ?></div>
+        </div>
+        
+        <div class="stat-card primary">
+            <div class="stat-card-header">
+                <span class="stat-card-title">Total Teams</span>
+                <div class="stat-card-icon icon-primary">🎯</div>
+            </div>
+            <div class="stat-card-value"><?php echo number_format($stats['total_teams']); ?></div>
+        </div>
+        
+        <div class="stat-card primary">
+            <div class="stat-card-header">
+                <span class="stat-card-title">Total Matches</span>
+                <div class="stat-card-icon icon-primary">📊</div>
+            </div>
+            <div class="stat-card-value"><?php echo number_format($stats['total_matches']); ?></div>
+        </div>
+    </div>
+    
+    <div class="data-section">
+        <div class="data-card">
+            <div class="data-card-header">Recent Leagues</div>
+            <div class="data-card-body">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>League Name</th>
+                            <th>Owner</th>
+                            <th>Players</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (!empty($recent_leagues)): ?>
+                            <?php foreach ($recent_leagues as $league): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($league['name']); ?></td>
+                                    <td><?php echo htmlspecialchars($league['owner_name'] ?? 'N/A'); ?></td>
+                                    <td><?php echo $league['num_of_players']; ?></td>
+                                    <td>
+                                        <?php if ($league['activated']): ?>
+                                            <span class="badge badge-success">Active</span>
+                                        <?php else: ?>
+                                            <span class="badge badge-danger">Inactive</span>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr>
+                                <td colspan="4" style="text-align: center; color: #999;">No leagues found</td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="data-card">
+            <div class="data-card-header">Recent Accounts</div>
+            <div class="data-card-body">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (!empty($recent_accounts)): ?>
+                            <?php foreach ($recent_accounts as $account): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($account['username']); ?></td>
+                                    <td><?php echo htmlspecialchars($account['email']); ?></td>
+                                    <td>
+                                        <?php if ($account['activated']): ?>
+                                            <span class="badge badge-success">Active</span>
+                                        <?php else: ?>
+                                            <span class="badge badge-warning">Pending</span>
+                                        <?php endif; ?>
+                                        <?php if ($account['admin']): ?>
+                                            <span class="badge badge-info">Admin</span>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr>
+                                <td colspan="3" style="text-align: center; color: #999;">No accounts found</td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php include 'includes/footer.php'; ?>
+
+//sidebar.php
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
+    
+    .sidebar {
+        position: fixed;
+        top: 70px;
+        left: 0;
+        width: 280px;
+        height: calc(100vh - 70px);
+        background: #FFFFFF;
+        box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+        overflow-y: auto;
+        z-index: 1002;
+        transition: transform 0.3s ease;
+    }
+    
+    .sidebar::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .sidebar::-webkit-scrollbar-track {
+        background: #f1f1f1;
+    }
+    
+    .sidebar::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #1D60AC, #0A92D7);
+        border-radius: 3px;
+    }
+    
+    .sidebar-menu {
+        padding: 20px 0;
+    }
+    
+    .menu-section {
+        margin-bottom: 25px;
+    }
+    
+    .menu-section-title {
+        padding: 0 25px 10px;
+        font-size: 11px;
+        font-weight: 700;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    
+    .menu-item {
+        display: flex;
+        align-items: center;
+        padding: 12px 25px;
+        color: #333;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        position: relative;
+        font-size: 14px;
+        font-weight: 500;
+    }
+    
+    .menu-item:hover {
+        background: linear-gradient(90deg, rgba(29,96,172,0.1), transparent);
+        color: #1D60AC;
+    }
+    
+    .menu-item.active {
+        background: linear-gradient(90deg, rgba(29,96,172,0.15), transparent);
+        color: #1D60AC;
+        border-left: 4px solid #1D60AC;
+        font-weight: 600;
+    }
+    
+    .menu-item.active::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 4px;
+        background: linear-gradient(135deg, #1D60AC, #0A92D7);
+    }
+    
+    .menu-icon {
+        min-width: 35px;
+        height: 35px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        margin-right: 12px;
+        border-radius: 8px;
+        background: rgba(29,96,172,0.1);
+        transition: all 0.3s ease;
+    }
+    
+    .menu-item:hover .menu-icon {
+        background: linear-gradient(135deg, #1D60AC, #0A92D7);
+        color: #FFFFFF;
+        transform: scale(1.1);
+    }
+    
+    .menu-item.active .menu-icon {
+        background: linear-gradient(135deg, #1D60AC, #0A92D7);
+        color: #FFFFFF;
+    }
+    
+    .menu-text {
+        flex: 1;
+    }
+    
+    .menu-badge {
+        background: #F1A155;
+        color: #FFFFFF;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    
+    .menu-arrow {
+        font-size: 12px;
+        transition: transform 0.3s ease;
+    }
+    
+    .menu-item.has-submenu.open .menu-arrow {
+        transform: rotate(180deg);
+    }
+    
+    .submenu {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+        background: rgba(29,96,172,0.03);
+    }
+    
+    .submenu.open {
+        max-height: 500px;
+    }
+    
+    .submenu-item {
+        display: flex;
+        align-items: center;
+        padding: 10px 25px 10px 72px;
+        color: #666;
+        text-decoration: none;
+        font-size: 13px;
+        transition: all 0.3s ease;
+    }
+    
+    .submenu-item:hover {
+        color: #1D60AC;
+        background: rgba(29,96,172,0.05);
+    }
+    
+    .submenu-item::before {
+        content: '•';
+        margin-right: 10px;
+        color: #1D60AC;
+    }
+    
+    @media (max-width: 768px) {
+        .sidebar {
+            transform: translateX(-100%);
+        }
+        
+        .sidebar.active {
+            transform: translateX(0);
+        }
+    }
+</style>
+
+<aside class="sidebar">
+    <nav class="sidebar-menu">
+        <div class="menu-section">
+            <div class="menu-section-title">Main Menu</div>
+            <a href="index.php" class="menu-item active">
+                <span class="menu-icon">📊</span>
+                <span class="menu-text">Dashboard</span>
+            </a>
+        </div>
+        
+        <div class="menu-section">
+            <div class="menu-section-title">User Management</div>
+            <a href="accounts.php" class="menu-item">
+                <span class="menu-icon">👥</span>
+                <span class="menu-text">Accounts</span>
+            </a>
+            <a href="admins.php" class="menu-item">
+                <span class="menu-icon">🔐</span>
+                <span class="menu-text">Administrators</span>
+            </a>
+        </div>
+        
+        <div class="menu-section">
+            <div class="menu-section-title">League Management</div>
+            <a href="leagues.php" class="menu-item">
+                <span class="menu-icon">🏆</span>
+                <span class="menu-text">Leagues</span>
+            </a>
+            <a href="league-contributors.php" class="menu-item">
+                <span class="menu-icon">👤</span>
+                <span class="menu-text">Contributors</span>
+            </a>
+            <a href="league-roles.php" class="menu-item">
+                <span class="menu-icon">⚙️</span>
+                <span class="menu-text">League Roles & Points</span>
+            </a>
+        </div>
+        
+        <div class="menu-section">
+            <div class="menu-section-title">Game Management</div>
+            <a href="teams.php" class="menu-item">
+                <span class="menu-icon">🎯</span>
+                <span class="menu-text">Teams</span>
+            </a>
+            <a href="players.php" class="menu-item">
+                <span class="menu-icon">⚽</span>
+                <span class="menu-text">Players</span>
+            </a>
+            <a href="matches.php" class="menu-item">
+                <span class="menu-icon">📅</span>
+                <span class="menu-text">Matches</span>
+            </a>
+            <a href="match-points.php" class="menu-item">
+                <span class="menu-icon">📈</span>
+                <span class="menu-text">Match Points</span>
+            </a>
+        </div>
+        
+        <div class="menu-section">
+            <div class="menu-section-title">Reports & Analytics</div>
+            <a href="reports.php" class="menu-item">
+                <span class="menu-icon">📊</span>
+                <span class="menu-text">Reports</span>
+            </a>
+            <a href="analytics.php" class="menu-item">
+                <span class="menu-icon">📉</span>
+                <span class="menu-text">Analytics</span>
+            </a>
+            <a href="leaderboards.php" class="menu-item">
+                <span class="menu-icon">🥇</span>
+                <span class="menu-text">Leaderboards</span>
+            </a>
+        </div>
+        
+        <div class="menu-section">
+            <div class="menu-section-title">Financial</div>
+            <a href="payments.php" class="menu-item">
+                <span class="menu-icon">💰</span>
+                <span class="menu-text">Payments</span>
+                <span class="menu-badge">New</span>
+            </a>
+            <a href="transactions.php" class="menu-item">
+                <span class="menu-icon">💳</span>
+                <span class="menu-text">Transactions</span>
+            </a>
+        </div>
+        
+        <div class="menu-section">
+            <div class="menu-section-title">System</div>
+            <a href="settings.php" class="menu-item">
+                <span class="menu-icon">⚙️</span>
+                <span class="menu-text">Settings</span>
+            </a>
+            <a href="logs.php" class="menu-item">
+                <span class="menu-icon">📝</span>
+                <span class="menu-text">System Logs</span>
+            </a>
+            <a href="logout.php" class="menu-item">
+                <span class="menu-icon">🚪</span>
+                <span class="menu-text">Logout</span>
+            </a>
+        </div>
+    </nav>
+</aside>
+
+<script>
+    // Handle active menu item
+    document.addEventListener('DOMContentLoaded', function() {
+        const currentPath = window.location.pathname.split('/').pop() || 'index.php';
+        const menuItems = document.querySelectorAll('.menu-item');
+        
+        menuItems.forEach(item => {
+            const href = item.getAttribute('href');
+            if (href === currentPath) {
+                item.classList.add('active');
+            } else {
+                item.classList.remove('active');
+            }
+        });
+    });
+    
+    // Handle submenu toggle
+    document.querySelectorAll('.menu-item.has-submenu').forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            this.classList.toggle('open');
+            const submenu = this.nextElementSibling;
+            if (submenu && submenu.classList.contains('submenu')) {
+                submenu.classList.toggle('open');
+            }
+        });
+    });
+</script>
+
+//header.php
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: #f5f7fa;
+            color: #000000;
+            padding-top: 70px;
+        }
+        
+        .header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 70px;
+    background: linear-gradient(135deg, #1D60AC, #0A92D7);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 30px;
+    z-index: 1000;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+        
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .header-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+        
+        .header-logo img {
+            height: 45px;
+            width: auto;
+            object-fit: contain;
+        }
+        
+        .header-logo-text {
+            font-size: 24px;
+            font-weight: 700;
+            color: #FFFFFF;
+            letter-spacing: -0.5px;
+        }
+        
+        .menu-toggle {
+    display: none;
+    background: linear-gradient(135deg, #1D60AC, #0A92D7);
+    border: 1px solid #FFFFFF;
+    color: #FFFFFF;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 20px;
+    transition: transform 0.3s ease;
+}
+        
+        .menu-toggle:hover {
+            transform: scale(1.05);
+        }
+        
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .header-profile {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #1D60AC, #0A92D7);
+            border-radius: 25px;
+            cursor: pointer;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .header-profile:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(10, 146, 215, 0.3);
+        }
+        
+        .header-profile-avatar {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background: #FFFFFF;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #1D60AC;
+            font-size: 14px;
+        }
+        
+        .header-profile-info {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header-profile-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: #FFFFFF;
+        }
+        
+        .header-profile-role {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.85);
+        }
+        
+        
+        .notification-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(29, 96, 172, 0.1), rgba(10, 146, 215, 0.1));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #1D60AC;
+            font-size: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .notification-icon:hover {
+            background: linear-gradient(135deg, #1D60AC, #0A92D7);
+            color: #FFFFFF;
+            transform: scale(1.1);
+        }
+        
+        .notification-badge {
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            background: #F1A155;
+            color: #FFFFFF;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+            border: 2px solid #FFFFFF;
+        }
+        
+        @media (max-width: 768px) {
+            .menu-toggle {
+                display: block;
+            }
+            
+            
+            .header-logo-text {
+                display: none;
+            }
+            
+            .header-profile-info {
+                display: none;
+            }
+        }
+        .sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(128, 128, 128, 0.5);
+    z-index: 1001; 
+    display: none;
+}
+
+    </style>
+</head>
+<body>
+
+<header class="header">
+    <div class="header-left">
+        <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+        <a href="index.php" class="header-logo">
+            <img src="assets/images/logo white outline.png" alt="Fantaziko Logo">
+            <span class="header-logo-text">Fantaziko Admin Board</span>
+        </a>
+    </div>
+    
+    <div class="header-right">
+        
+        <div class="header-profile">
+            <div class="header-profile-avatar">AD</div>
+            <div class="header-profile-info">
+                <span class="header-profile-name">Admin User</span>
+                <span class="header-profile-role">Administrator</span>
+            </div>
+        </div>
+    </div>
+    
+</header>
+<div id="sidebar-overlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+<script>
+
+    function toggleSidebar() {
+        const sidebar = document.querySelector('.sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        if (sidebar) {
+            sidebar.classList.toggle('active');
+            if (overlay) {
+                overlay.style.display = sidebar.classList.contains('active') ? 'block' : 'none';
+            }
+        }
+    }
+
+</script>
+
+//footer.php
+<style>
+    .footer {
+        background: linear-gradient(135deg, #1D60AC 0%, #0A92D7 100%);
+        color: #FFFFFF;
+        padding: 30px 0;
+        margin-top: 50px;
+        margin-left: 280px;
+        transition: margin-left 0.3s ease;
+    }
+    
+    .footer-content {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 30px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 30px;
+    }
+    
+    .footer-section {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .footer-title {
+        font-size: 18px;
+        font-weight: 700;
+        margin-bottom: 5px;
+        color: #FFFFFF;
+    }
+    
+    .footer-text {
+        font-size: 14px;
+        line-height: 1.6;
+        color: rgba(255,255,255,0.9);
+    }
+    
+    .footer-links {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .footer-link {
+        color: rgba(255,255,255,0.9);
+        text-decoration: none;
+        font-size: 14px;
+        transition: color 0.3s ease, padding-left 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .footer-link:hover {
+        color: #FFFFFF;
+        padding-left: 5px;
+    }
+    
+    .footer-link::before {
+        content: '→';
+        font-size: 12px;
+    }
+    
+    .footer-social {
+        display: flex;
+        gap: 15px;
+        margin-top: 10px;
+    }
+    
+    .social-icon {
+        width: 40px;
+        height: 40px;
+        background: rgba(255,255,255,0.2);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #FFFFFF;
+        text-decoration: none;
+        font-size: 18px;
+        transition: all 0.3s ease;
+    }
+    
+    .social-icon:hover {
+        background: rgba(255,255,255,0.3);
+        transform: translateY(-3px);
+    }
+    
+    .footer-bottom {
+        margin-top: 30px;
+        padding-top: 20px;
+        border-top: 1px solid rgba(255,255,255,0.2);
+        text-align: center;
+    }
+    
+    .footer-bottom-content {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    
+    .copyright {
+        font-size: 14px;
+        color: rgba(255,255,255,0.9);
+    }
+    
+    .footer-bottom-links {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+    }
+    
+    .footer-bottom-link {
+        color: rgba(255,255,255,0.9);
+        text-decoration: none;
+        font-size: 14px;
+        transition: color 0.3s ease;
+    }
+    
+    .footer-bottom-link:hover {
+        color: #FFFFFF;
+    }
+    
+    @media (max-width: 1024px) {
+        .footer {
+            margin-left: 0;
+        }
+    }
+    
+    @media (max-width: 768px) {
+        .footer {
+            padding: 20px 0;
+            margin-top: 30px;
+        }
+        
+        .footer-content {
+            padding: 0 15px;
+            gap: 20px;
+        }
+        
+        .footer-section {
+            gap: 10px;
+        }
+        
+        .footer-bottom-content {
+            flex-direction: column;
+            text-align: center;
+            padding: 0 15px;
+        }
+        
+        .footer-bottom-links {
+            justify-content: center;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .footer-title {
+            font-size: 16px;
+        }
+        
+        .footer-text,
+        .footer-link,
+        .copyright,
+        .footer-bottom-link {
+            font-size: 13px;
+        }
+        
+        .social-icon {
+            width: 35px;
+            height: 35px;
+            font-size: 16px;
+        }
+    }
+</style>
+
+<footer class="footer">
+    <div class="footer-content">
+        <div class="footer-section">
+            <h3 class="footer-title">Fantaziko</h3>
+            <p class="footer-text">
+                Your ultimate fantasy sports management platform. Create leagues, manage teams, and track performance with ease.
+            </p>
+            <div class="footer-social">
+                <a href="#" class="social-icon" title="Facebook">📘</a>
+                <a href="#" class="social-icon" title="Twitter">🐦</a>
+                <a href="#" class="social-icon" title="Instagram">📷</a>
+                <a href="#" class="social-icon" title="LinkedIn">💼</a>
+            </div>
+        </div>
+        
+        <div class="footer-section">
+            <h3 class="footer-title">Quick Links</h3>
+            <div class="footer-links">
+                <a href="index.php" class="footer-link">Dashboard</a>
+                <a href="accounts.php" class="footer-link">Accounts</a>
+                <a href="leagues.php" class="footer-link">Leagues</a>
+                <a href="teams.php" class="footer-link">Teams</a>
+                <a href="players.php" class="footer-link">Players</a>
+            </div>
+        </div>
+        
+        <div class="footer-section">
+            <h3 class="footer-title">Management</h3>
+            <div class="footer-links">
+                <a href="matches.php" class="footer-link">Matches</a>
+                <a href="match-points.php" class="footer-link">Match Points</a>
+                <a href="reports.php" class="footer-link">Reports</a>
+                <a href="analytics.php" class="footer-link">Analytics</a>
+                <a href="leaderboards.php" class="footer-link">Leaderboards</a>
+            </div>
+        </div>
+        
+        <div class="footer-section">
+            <h3 class="footer-title">Support</h3>
+            <div class="footer-links">
+                <a href="settings.php" class="footer-link">Settings</a>
+                <a href="logs.php" class="footer-link">System Logs</a>
+                <a href="#" class="footer-link">Help Center</a>
+                <a href="#" class="footer-link">Documentation</a>
+                <a href="#" class="footer-link">Contact Us</a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="footer-bottom">
+        <div class="footer-bottom-content">
+            <div class="copyright">
+                &copy; <?php echo date('Y'); ?> Fantaziko. All rights reserved.
+            </div>
+            <div class="footer-bottom-links">
+                <a href="#" class="footer-bottom-link">Privacy Policy</a>
+                <a href="#" class="footer-bottom-link">Terms of Service</a>
+                <a href="#" class="footer-bottom-link">Cookie Policy</a>
+            </div>
+        </div>
+    </div>
+</footer>
+
+</body>
+</html>
+
+//teams.php
