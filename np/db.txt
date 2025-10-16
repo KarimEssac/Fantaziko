@@ -76,10 +76,13 @@
 7- TABLE league_players (
     player_id INT AUTO_INCREMENT PRIMARY KEY,
     league_id INT NOT NULL,
+    team_id INT NOT NULL,
     player_name VARCHAR(100) NOT NULL,
     player_role ENUM('GK', 'DEF', 'MID', 'ATT') NOT NULL,
-    player_price NUM
+    player_price DECIMAL(10,2) DEFAULT 0.00,  -- Fixed from NUM
+    total_points INT DEFAULT 0;
     FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE
+    FOREIGN KEY (team_id) REFERENCES league_teams(id) ON DELETE SET NULL
 ) 
 
 
@@ -87,10 +90,14 @@
     match_id INT AUTO_INCREMENT PRIMARY KEY,
     league_id INT NOT NULL,
     round INT NOT NULL,
+    team1_id INT DEFAULT NULL
+    team2_id INT DEFAULT NULL
     team1_score INT DEFAULT 0,
     team2_score INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE
+    FOREIGN KEY (team1_id) REFERENCES league_teams(id) ON DELETE SET NULL;
+    FOREIGN KEY (team2_id) REFERENCES league_teams(id) ON DELETE SET NULL;
 )
 
 
@@ -103,6 +110,12 @@
     minus INT DEFAULT NULL,
     yellow_card INT DEFAULT 0,
     red_card INT DEFAULT 0,
+    saved_penalty_gk INT DEFAULT NULL AFTER minus_points,
+    missed_penalty_player INT DEFAULT NULL AFTER saved_penalty_gk,
+    bonus_points INT DEFAULT 0 AFTER bonus,
+    minus_points INT DEFAULT 0 AFTER minus;
+    FOREIGN KEY (saved_penalty_gk) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    FOREIGN KEY (missed_penalty_player) REFERENCES league_players(player_id) ON DELETE SET NULL;
     FOREIGN KEY (match_id) REFERENCES matches(match_id) ON DELETE CASCADE,
     FOREIGN KEY (scorer) REFERENCES league_players(player_id) ON DELETE SET NULL,
     FOREIGN KEY (assister) REFERENCES league_players(player_id) ON DELETE SET NULL,
