@@ -168,4 +168,4 @@
     FOREIGN KEY (missed_penalty_player) REFERENCES league_players(player_id) ON DELETE SET NULL,
     FOREIGN KEY (yellow_card_player) REFERENCES league_players(player_id) ON DELETE SET NULL,
     FOREIGN KEY (red_card_player) REFERENCES league_players(player_id) ON DELETE SET NULL
-) 
+)  
