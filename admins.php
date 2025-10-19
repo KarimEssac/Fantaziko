@@ -8,7 +8,7 @@ if (isset($_GET['ajax'])) {
     
     if ($_GET['ajax'] === 'get_admin' && isset($_GET['id'])) {
         try {
-            $stmt = $pdo->prepare("SELECT id, email FROM admins WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT id, username, email FROM admins WHERE id = ?");
             $stmt->execute([$_GET['id']]);
             $admin = $stmt->fetch(PDO::FETCH_ASSOC);
             
@@ -30,9 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             switch ($_POST['action']) {
                 case 'create':
-                    $stmt = $pdo->prepare("INSERT INTO admins (email, password) VALUES (?, ?)");
+                    $stmt = $pdo->prepare("INSERT INTO admins (username, email, password) VALUES (?, ?, ?)");
                     $hashedPassword = password_hash($_POST['password'], PASSWORD_DEFAULT);
                     $stmt->execute([
+                        $_POST['username'],
                         $_POST['email'],
                         $hashedPassword
                     ]);
@@ -41,16 +42,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                 case 'update':
                     if (!empty($_POST['password'])) {
-                        $stmt = $pdo->prepare("UPDATE admins SET email = ?, password = ? WHERE id = ?");
+                        $stmt = $pdo->prepare("UPDATE admins SET username = ?, email = ?, password = ? WHERE id = ?");
                         $hashedPassword = password_hash($_POST['password'], PASSWORD_DEFAULT);
                         $stmt->execute([
+                            $_POST['username'],
                             $_POST['email'],
                             $hashedPassword,
                             $_POST['id']
                         ]);
                     } else {
-                        $stmt = $pdo->prepare("UPDATE admins SET email = ? WHERE id = ?");
+                        $stmt = $pdo->prepare("UPDATE admins SET username = ?, email = ? WHERE id = ?");
                         $stmt->execute([
+                            $_POST['username'],
                             $_POST['email'],
                             $_POST['id']
                         ]);
@@ -76,8 +79,8 @@ $where_clause = '';
 $params = [];
 
 if (!empty($search)) {
-    $where_clause = "WHERE id = ? OR email LIKE ?";
-    $params = [$search, "%$search%"];
+    $where_clause = "WHERE id = ? OR username LIKE ? OR email LIKE ?";
+    $params = [$search, "%$search%", "%$search%"];
 }
 
 try {
@@ -428,7 +431,7 @@ include 'includes/sidebar.php';
     
     <div class="search-bar">
         <span class="search-icon">🔍</span>
-        <input type="text" id="searchInput" placeholder="Search by ID or Email..." value="<?php echo htmlspecialchars($search); ?>">
+        <input type="text" id="searchInput" placeholder="Search by ID, Username or Email..." value="<?php echo htmlspecialchars($search); ?>">
     </div>
     
     <br>
@@ -439,6 +442,7 @@ include 'includes/sidebar.php';
                 <thead>
                     <tr>
                         <th>ID</th>
+                        <th>Username</th>
                         <th>Email</th>
                         <th>Role</th>
                         <th>Actions</th>
@@ -449,6 +453,7 @@ include 'includes/sidebar.php';
                         <?php foreach ($admins as $admin): ?>
                             <tr>
                                 <td><?php echo htmlspecialchars($admin['id']); ?></td>
+                                <td><?php echo htmlspecialchars($admin['username']); ?></td>
                                 <td><?php echo htmlspecialchars($admin['email']); ?></td>
                                 <td>
                                     <span class="badge badge-info">Administrator</span>
@@ -456,14 +461,14 @@ include 'includes/sidebar.php';
                                 <td>
                                     <div class="action-buttons">
                                         <button class="btn btn-secondary btn-sm" onclick="editAdmin(<?php echo $admin['id']; ?>)">✏️ Edit</button>
-                                        <button class="btn btn-danger btn-sm" onclick="deleteAdmin(<?php echo $admin['id']; ?>, '<?php echo htmlspecialchars($admin['email']); ?>')">🗑️ Delete</button>
+                                        <button class="btn btn-danger btn-sm" onclick="deleteAdmin(<?php echo $admin['id']; ?>, '<?php echo htmlspecialchars($admin['username']); ?>')">🗑️ Delete</button>
                                     </div>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="4" style="text-align: center; color: #999; padding: 30px;">No administrators found</td>
+                            <td colspan="5" style="text-align: center; color: #999; padding: 30px;">No administrators found</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
@@ -483,6 +488,11 @@ include 'includes/sidebar.php';
             <div class="modal-body">
                 <input type="hidden" name="action" id="formAction" value="create">
                 <input type="hidden" name="id" id="adminId">
+                
+                <div class="form-group">
+                    <label class="form-label">Username *</label>
+                    <input type="text" name="username" id="username" class="form-control" required>
+                </div>
                 
                 <div class="form-group">
                     <label class="form-label">Email *</label>
@@ -513,7 +523,7 @@ include 'includes/sidebar.php';
             <div class="modal-body">
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="id" id="deleteAdminId">
-                <p style="font-size: 14px; color: #333; margin: 0;">Are you sure you want to delete administrator <strong id="deleteAdminEmail"></strong>? This action cannot be undone.</p>
+                <p style="font-size: 14px; color: #333; margin: 0;">Are you sure you want to delete administrator <strong id="deleteAdminUsername"></strong>? This action cannot be undone.</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-info" onclick="closeDeleteModal()">Cancel</button>
@@ -571,6 +581,7 @@ include 'includes/sidebar.php';
                 document.getElementById('modalTitle').textContent = 'Edit Administrator';
                 document.getElementById('formAction').value = 'update';
                 document.getElementById('adminId').value = data.id;
+                document.getElementById('username').value = data.username;
                 document.getElementById('email').value = data.email;
                 document.getElementById('password').value = '';
                 document.getElementById('password').required = false;
@@ -583,9 +594,9 @@ include 'includes/sidebar.php';
             });
     }
     
-    function deleteAdmin(id, email) {
+    function deleteAdmin(id, username) {
         document.getElementById('deleteAdminId').value = id;
-        document.getElementById('deleteAdminEmail').textContent = email;
+        document.getElementById('deleteAdminUsername').textContent = username;
         document.getElementById('deleteModal').classList.add('active');
     }
     
