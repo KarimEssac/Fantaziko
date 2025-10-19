@@ -1,8 +1,8 @@
 <?php
 session_start();
 require_once 'config/db.php';
+require_once 'includes/auth_check.php';
 
-// Handle AJAX requests for getting admin data
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
     

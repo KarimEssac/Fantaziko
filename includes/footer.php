@@ -187,10 +187,16 @@
                 Your ultimate fantasy sports management platform. Create leagues, manage teams, and track performance with ease.
             </p>
             <div class="footer-social">
-                <a href="#" class="social-icon" title="Facebook">📘</a>
-                <a href="#" class="social-icon" title="Twitter">🐦</a>
-                <a href="#" class="social-icon" title="Instagram">📷</a>
-                <a href="#" class="social-icon" title="LinkedIn">💼</a>
+                <a href="#" class="social-icon" title="Facebook">f</a>
+                <a href="#" class="social-icon" title="Twitter">𝕏</a>
+                <a href="#" class="social-icon" title="Instagram">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="2" y="2" width="20" height="20" rx="5" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <circle cx="18" cy="6" r="1.5" fill="currentColor"/>
+                    </svg>
+                </a>
+                <a href="#" class="social-icon" title="LinkedIn">in</a>
             </div>
         </div>
         
@@ -216,30 +222,8 @@
             </div>
         </div>
         
-        <div class="footer-section">
-            <h3 class="footer-title">Support</h3>
-            <div class="footer-links">
-                <a href="settings.php" class="footer-link">Settings</a>
-                <a href="logs.php" class="footer-link">System Logs</a>
-                <a href="#" class="footer-link">Help Center</a>
-                <a href="#" class="footer-link">Documentation</a>
-                <a href="#" class="footer-link">Contact Us</a>
-            </div>
-        </div>
     </div>
-    
-    <div class="footer-bottom">
-        <div class="footer-bottom-content">
-            <div class="copyright">
-                &copy; <?php echo date('Y'); ?> Fantaziko. All rights reserved.
-            </div>
-            <div class="footer-bottom-links">
-                <a href="#" class="footer-bottom-link">Privacy Policy</a>
-                <a href="#" class="footer-bottom-link">Terms of Service</a>
-                <a href="#" class="footer-bottom-link">Cookie Policy</a>
-            </div>
-        </div>
-    </div>
+
 </footer>
 
 </body>

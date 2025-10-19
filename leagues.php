@@ -1,8 +1,7 @@
 <?php
 session_start();
 require_once 'config/db.php';
-
-// Handle AJAX requests for getting league data
+require_once 'includes/auth_check.php';
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
     
@@ -183,6 +182,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->execute([$_POST['id']]);
                     $success_message = "League activation status updated!";
                     break;
+                    
+                case 'activate_pending':
+                    $stmt = $pdo->prepare("UPDATE leagues SET activated = 1 WHERE id = ?");
+                    $stmt->execute([$_POST['id']]);
+                    $success_message = "League activated successfully!";
+                    break;
             }
         } catch (PDOException $e) {
             if (isset($pdo) && $pdo->inTransaction()) {
@@ -193,12 +198,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Fetch leagues with search and filter functionality
+// Fetch active leagues with search and filter functionality
 $search = isset($_GET['search']) ? $_GET['search'] : '';
 $status = isset($_GET['status']) ? $_GET['status'] : '';
 $system = isset($_GET['system']) ? $_GET['system'] : '';
 
-$where_conditions = [];
+$where_conditions = ['l.activated = 1'];
 $params = [];
 
 if (!empty($search)) {
@@ -207,17 +212,12 @@ if (!empty($search)) {
     $params[] = "%$search%";
 }
 
-if ($status !== '') {
-    $where_conditions[] = "l.activated = ?";
-    $params[] = $status;
-}
-
 if (!empty($system)) {
     $where_conditions[] = "l.system = ?";
     $params[] = $system;
 }
 
-$where_clause = !empty($where_conditions) ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
+$where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
 
 try {
     $stmt = $pdo->prepare("
@@ -236,6 +236,38 @@ try {
 } catch (PDOException $e) {
     $error_message = "Database error: " . $e->getMessage();
     $leagues = [];
+}
+
+// Fetch pending leagues (activated = 0)
+$pending_search = isset($_GET['pending_search']) ? $_GET['pending_search'] : '';
+$pending_where_conditions = ['l.activated = 0'];
+$pending_params = [];
+
+if (!empty($pending_search)) {
+    $pending_where_conditions[] = "(l.id = ? OR l.name LIKE ?)";
+    $pending_params[] = $pending_search;
+    $pending_params[] = "%$pending_search%";
+}
+
+$pending_where_clause = 'WHERE ' . implode(' AND ', $pending_where_conditions);
+
+try {
+    $stmt = $pdo->prepare("
+        SELECT l.*, 
+               a1.username as owner_name,
+               a1.email as owner_email,
+               a2.username as other_owner_name
+        FROM leagues l
+        LEFT JOIN accounts a1 ON l.owner = a1.id
+        LEFT JOIN accounts a2 ON l.other_owner = a2.id
+        $pending_where_clause
+        ORDER BY l.created_at DESC
+    ");
+    $stmt->execute($pending_params);
+    $pending_leagues = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    $pending_error_message = "Database error: " . $e->getMessage();
+    $pending_leagues = [];
 }
 
 include 'includes/header.php';
@@ -268,6 +300,21 @@ include 'includes/sidebar.php';
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
+    }
+    
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 40px 0 20px 0;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    
+    .section-title-main {
+        font-size: 24px;
+        font-weight: 700;
+        color: #333;
     }
     
     .btn {
@@ -417,6 +464,7 @@ include 'includes/sidebar.php';
         border-radius: 12px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         overflow: hidden;
+        margin-bottom: 30px;
     }
     
     .table-container {
@@ -431,6 +479,10 @@ include 'includes/sidebar.php';
     .data-table thead {
         background: linear-gradient(135deg, #1D60AC, #0A92D7);
         color: #FFFFFF;
+    }
+    
+    .data-table.pending thead {
+        background: linear-gradient(135deg, #F1A155, #e89944);
     }
     
     .data-table th {
@@ -774,17 +826,16 @@ include 'includes/sidebar.php';
         <div class="alert alert-error"><?php echo htmlspecialchars($error_message); ?></div>
     <?php endif; ?>
     
+    <!-- Active Leagues Section -->
+    <div class="section-header">
+        <h2 class="section-title-main">Active Leagues</h2>
+    </div>
+    
     <div class="filter-bar">
         <div class="search-bar">
             <span class="search-icon">🔍</span>
             <input type="text" id="searchInput" placeholder="Search by ID or League Name..." value="<?php echo htmlspecialchars($search); ?>">
         </div>
-        
-        <select id="statusFilter" class="filter-select">
-            <option value="">All Status</option>
-            <option value="1" <?php echo $status === '1' ? 'selected' : ''; ?>>Active</option>
-            <option value="0" <?php echo $status === '0' ? 'selected' : ''; ?>>Inactive</option>
-        </select>
         
         <select id="systemFilter" class="filter-select">
             <option value="">All Systems</option>
@@ -840,18 +891,14 @@ include 'includes/sidebar.php';
                                 <td><strong>Round <?php echo $league['round']; ?></strong></td>
                                 <td>EGP <?php echo number_format($league['price'], 2); ?></td>
                                 <td>
-                                    <?php if ($league['activated']): ?>
-                                        <span class="badge badge-success">Active</span>
-                                    <?php else: ?>
-                                        <span class="badge badge-warning">Inactive</span>
-                                    <?php endif; ?>
+                                    <span class="badge badge-success">Active</span>
                                 </td>
                                 <td>
                                     <div class="action-buttons">
                                         <button class="btn btn-info btn-sm" onclick="viewLeague(<?php echo $league['id']; ?>)">👁️ View</button>
                                         <button class="btn btn-secondary btn-sm" onclick="editLeague(<?php echo $league['id']; ?>)">✏️ Edit</button>
-                                        <button class="btn <?php echo $league['activated'] ? 'btn-warning' : 'btn-success'; ?> btn-sm" onclick="toggleActivation(<?php echo $league['id']; ?>, '<?php echo htmlspecialchars($league['name']); ?>', <?php echo $league['activated']; ?>)">
-                                            <?php echo $league['activated'] ? '⏸️ Deactivate' : '▶️ Activate'; ?>
+                                        <button class="btn btn-warning btn-sm" onclick="toggleActivation(<?php echo $league['id']; ?>, '<?php echo htmlspecialchars($league['name']); ?>', 1)">
+                                            ⏸️ Deactivate
                                         </button>
                                         <button class="btn btn-danger btn-sm" onclick="deleteLeague(<?php echo $league['id']; ?>, '<?php echo htmlspecialchars($league['name']); ?>')">🗑️ Delete</button>
                                     </div>
@@ -860,15 +907,83 @@ include 'includes/sidebar.php';
                         <?php endforeach; ?>
                     <?php else: ?>
                         <tr>
-                            <td colspan="9" style="text-align: center; color: #999; padding: 30px;">No leagues found</td>
+                            <td colspan="9" style="text-align: center; color: #999; padding: 30px;">No active leagues found</td>
                         </tr>
                     <?php endif; ?>
                 </tbody>
             </table>
         </div>
     </div>
+    
+    <!-- Pending Leagues Section -->
+    <div class="section-header">
+        <h2 class="section-title-main">Pending League Requests</h2>
+    </div>
+    
+    <div class="filter-bar">
+        <div class="search-bar">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="pendingSearchInput" placeholder="Search pending leagues..." value="<?php echo htmlspecialchars($pending_search); ?>">
+        </div>
+    </div>
+    
+    <div class="data-card">
+        <div class="table-container">
+            <table class="data-table pending">
+                <thead>
+                    <tr>
+                        <th>
+                            ID</th>
+<th>League Name</th>
+<th>Owner</th>
+<th>Owner Email</th>
+<th>System</th>
+<th>Price</th>
+<th>Created At</th>
+<th>Actions</th>
+</tr>
+</thead>
+<tbody>
+<?php if (!empty($pending_leagues)): ?>
+<?php foreach ($pending_leagues as $pending): ?>
+<tr>
+<td><?php echo htmlspecialchars($pending['id']); ?></td>
+<td>
+<strong><?php echo htmlspecialchars($pending['name']); ?></strong>
+<?php if ($pending['other_owner_name']): ?>
+<br><small style="color: #999;">Co-Owner: <?php echo htmlspecialchars($pending['other_owner_name']); ?></small>
+<?php endif; ?>
+</td>
+<td><?php echo htmlspecialchars($pending['owner_name'] ?? 'N/A'); ?></td>
+<td><?php echo htmlspecialchars($pending['owner_email'] ?? 'N/A'); ?></td>
+<td>
+<span class="badge <?php echo $pending['system'] === 'Budget' ? 'badge-primary' : 'badge-secondary'; ?>">
+<?php echo htmlspecialchars($pending['system']); ?>
+</span>
+</td>
+<td>EGP <?php echo number_format($pending['price'], 2); ?></td>
+<td><?php echo date('Y-m-d H:i', strtotime($pending['created_at'])); ?></td>
+<td>
+<div class="action-buttons">
+<button class="btn btn-info btn-sm" onclick="viewLeague(<?php echo $pending['id']; ?>)">👁️ View</button>
+<button class="btn btn-success btn-sm" onclick="activatePending(<?php echo $pending['id']; ?>, '<?php echo htmlspecialchars($pending['name']); ?>')">
+✅ Activate
+</button>
+<button class="btn btn-danger btn-sm" onclick="deleteLeague(<?php echo $pending['id']; ?>, '<?php echo htmlspecialchars($pending['name']); ?>')">🗑️ Delete</button>
 </div>
-
+</td>
+</tr>
+<?php endforeach; ?>
+<?php else: ?>
+<tr>
+<td colspan="8" style="text-align: center; color: #999; padding: 30px;">No pending league requests</td>
+</tr>
+<?php endif; ?>
+</tbody>
+</table>
+</div>
+</div>
+</div>
 <!-- Create/Edit Modal -->
 <div id="leagueModal" class="modal">
     <div class="modal-content">
@@ -880,77 +995,75 @@ include 'includes/sidebar.php';
             <div class="modal-body">
                 <input type="hidden" name="action" id="formAction" value="create">
                 <input type="hidden" name="id" id="leagueId">
-                
+            <div class="form-group">
+                <label class="form-label">League Name *</label>
+                <input type="text" name="name" id="name" class="form-control" required>
+            </div>
+            
+            <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">League Name *</label>
-                    <input type="text" name="name" id="name" class="form-control" required>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Owner *</label>
-                        <select name="owner" id="owner" class="form-control" required>
-                            <option value="">Select Owner</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Co-Owner (Optional)</label>
-                        <select name="other_owner" id="other_owner" class="form-control">
-                            <option value="">Select Co-Owner</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">System *</label>
-                        <select name="system" id="system" class="form-control" required>
-                            <option value="No Limits">No Limits</option>
-                            <option value="Budget">Budget</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Price</label>
-                        <input type="number" name="price" id="price" class="form-control" step="0.01" min="0" value="0.00">
-                    </div>
-                </div>
-                
-                <div class="section-title">Power-ups</div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Triple Captain</label>
-                        <input type="number" name="triple_captain" id="triple_captain" class="form-control" min="0" value="0">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Bench Boost</label>
-                        <input type="number" name="bench_boost" id="bench_boost" class="form-control" min="0" value="0">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label class="form-label">Wild Card</label>
-                        <input type="number" name="wild_card" id="wild_card" class="form-control" min="0" value="0">
-                    </div>
+                    <label class="form-label">Owner *</label>
+                    <select name="owner" id="owner" class="form-control" required>
+                        <option value="">Select Owner</option>
+                    </select>
                 </div>
                 
                 <div class="form-group">
-                    <div class="form-check">
-                        <input type="checkbox" name="activated" id="activated" value="1">
-                        <label for="activated">Activated</label>
-                    </div>
+                    <label class="form-label">Co-Owner (Optional)</label>
+                    <select name="other_owner" id="other_owner" class="form-control">
+                        <option value="">Select Co-Owner</option>
+                    </select>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-danger" onclick="closeModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Save League</button>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">System *</label>
+                    <select name="system" id="system" class="form-control" required>
+                        <option value="No Limits">No Limits</option>
+                        <option value="Budget">Budget</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Price</label>
+                    <input type="number" name="price" id="price" class="form-control" step="0.01" min="0" value="0.00">
+                </div>
             </div>
-        </form>
-    </div>
+            
+            <div class="section-title">Power-ups</div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Triple Captain</label>
+                    <input type="number" name="triple_captain" id="triple_captain" class="form-control" min="0" value="0">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Bench Boost</label>
+                    <input type="number" name="bench_boost" id="bench_boost" class="form-control" min="0" value="0">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Wild Card</label>
+                    <input type="number" name="wild_card" id="wild_card" class="form-control" min="0" value="0">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <div class="form-check">
+                    <input type="checkbox" name="activated" id="activated" value="1">
+                    <label for="activated">Activated</label>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-danger" onclick="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save League</button>
+        </div>
+    </form>
 </div>
-
+</div>
 <!-- View Details Modal -->
 <div id="viewModal" class="modal">
     <div class="modal-content large">
@@ -966,7 +1079,26 @@ include 'includes/sidebar.php';
         </div>
     </div>
 </div>
-
+<!-- Activate Pending Confirmation Modal -->
+<div id="activateModal" class="modal">
+    <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-header">
+            <span>Confirm Activation</span>
+            <button class="modal-close" onclick="closeActivateModal()">&times;</button>
+        </div>
+        <form id="activateForm" method="POST">
+            <div class="modal-body">
+                <input type="hidden" name="action" value="activate_pending">
+                <input type="hidden" name="id" id="activateLeagueId">
+                <p style="font-size: 14px; color: #333; margin: 0;" id="activateMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-info" onclick="closeActivateModal()">Cancel</button>
+                <button type="submit" class="btn btn-success">Activate League</button>
+            </div>
+        </form>
+    </div>
+</div>
 <!-- Toggle Activation Confirmation Modal -->
 <div id="toggleModal" class="modal">
     <div class="modal-content" style="max-width: 400px;">
@@ -987,7 +1119,6 @@ include 'includes/sidebar.php';
         </form>
     </div>
 </div>
-
 <!-- Delete Confirmation Modal -->
 <div id="deleteModal" class="modal">
     <div class="modal-content" style="max-width: 400px;">
@@ -1008,7 +1139,6 @@ include 'includes/sidebar.php';
         </form>
     </div>
 </div>
-
 <script>
     // Load accounts for owner selection
     function loadAccounts() {
@@ -1037,27 +1167,45 @@ include 'includes/sidebar.php';
             });
     }
     
-    // Search and filter functionality
+    // Search and filter functionality for active leagues
     document.getElementById('searchInput').addEventListener('keyup', function(e) {
         if (e.key === 'Enter') {
             applyFilters();
         }
     });
     
-    document.getElementById('statusFilter').addEventListener('change', applyFilters);
     document.getElementById('systemFilter').addEventListener('change', applyFilters);
     
     function applyFilters() {
         const search = document.getElementById('searchInput').value;
-        const status = document.getElementById('statusFilter').value;
         const system = document.getElementById('systemFilter').value;
         
         const url = new URL(window.location.href);
         url.search = '';
         
         if (search) url.searchParams.set('search', search);
-        if (status !== '') url.searchParams.set('status', status);
         if (system) url.searchParams.set('system', system);
+        
+        window.location.href = url;
+    }
+    
+    // Search functionality for pending leagues
+    document.getElementById('pendingSearchInput').addEventListener('keyup', function(e) {
+        if (e.key === 'Enter') {
+            applyPendingFilters();
+        }
+    });
+    
+    function applyPendingFilters() {
+        const pendingSearch = document.getElementById('pendingSearchInput').value;
+        
+        const url = new URL(window.location.href);
+        
+        if (pendingSearch) {
+            url.searchParams.set('pending_search', pendingSearch);
+        } else {
+            url.searchParams.delete('pending_search');
+        }
         
         window.location.href = url;
     }
@@ -1235,13 +1383,26 @@ include 'includes/sidebar.php';
                         playersByRole[player.player_role].push(player);
                     });
                     
+                    // Create a map of team_id to team_name from data.teams
+                    const teamMap = {};
+                    if (data.teams && data.teams.length > 0) {
+                        data.teams.forEach(team => {
+                            teamMap[team.id] = team.team_name;
+                        });
+                    }
+                    
                     Object.keys(playersByRole).forEach(role => {
                         if (playersByRole[role].length > 0) {
                             html += `<div style="margin-bottom: 15px;">
                                 <strong style="color: #1D60AC; font-size: 14px;">${role} (${playersByRole[role].length})</strong>
                                 <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">`;
                             playersByRole[role].forEach(player => {
-                                html += `<span class="badge badge-primary">${player.player_name}</span>`;
+                                const teamName = teamMap[player.team_id] || 'N/A';
+                                let playerDisplay = `${player.player_name} (${teamName})`;
+                                if (data.system === 'Budget') {
+                                    playerDisplay += ` - ${parseFloat(player.player_price).toFixed(2)}M`;
+                                }
+                                html += `<span class="badge badge-primary">${playerDisplay}</span>`;
                             });
                             html += '</div></div>';
                         }
@@ -1320,6 +1481,13 @@ include 'includes/sidebar.php';
             });
     }
     
+    function activatePending(id, name) {
+        document.getElementById('activateLeagueId').value = id;
+        document.getElementById('activateMessage').textContent = 
+            `Are you sure you want to activate league "${name}"? This will move it to the active leagues list.`;
+        document.getElementById('activateModal').classList.add('active');
+    }
+    
     function toggleActivation(id, name, currentStatus) {
         document.getElementById('toggleLeagueId').value = id;
         const action = currentStatus ? 'deactivate' : 'activate';
@@ -1342,6 +1510,10 @@ include 'includes/sidebar.php';
         document.getElementById('viewModal').classList.remove('active');
     }
     
+    function closeActivateModal() {
+        document.getElementById('activateModal').classList.remove('active');
+    }
+    
     function closeToggleModal() {
         document.getElementById('toggleModal').classList.remove('active');
     }
@@ -1354,6 +1526,7 @@ include 'includes/sidebar.php';
     window.onclick = function(event) {
         const leagueModal = document.getElementById('leagueModal');
         const viewModal = document.getElementById('viewModal');
+        const activateModal = document.getElementById('activateModal');
         const toggleModal = document.getElementById('toggleModal');
         const deleteModal = document.getElementById('deleteModal');
         
@@ -1363,6 +1536,9 @@ include 'includes/sidebar.php';
         if (event.target === viewModal) {
             closeViewModal();
         }
+        if (event.target === activateModal) {
+            closeActivateModal();
+        }
         if (event.target === toggleModal) {
             closeToggleModal();
         }
@@ -1371,5 +1547,4 @@ include 'includes/sidebar.php';
         }
     }
 </script>
-
 <?php include 'includes/footer.php'; ?>

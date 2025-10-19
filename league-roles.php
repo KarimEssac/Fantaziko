@@ -1,8 +1,7 @@
 <?php
 session_start();
 require_once 'config/db.php';
-
-// Handle AJAX requests
+require_once 'includes/auth_check.php';
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
     

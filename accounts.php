@@ -1,8 +1,7 @@
 <?php
 session_start();
 require_once 'config/db.php';
-
-// Handle AJAX requests for getting account data
+require_once 'includes/auth_check.php';
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
     
@@ -37,7 +36,7 @@ if (isset($_GET['ajax'])) {
                 exit();
             }
             
-            // Get leagues where this account is the owner
+            // Get all associated leagues with role and total_score
             $stmt = $pdo->prepare("
                 SELECT 
                     l.id,
@@ -46,33 +45,19 @@ if (isset($_GET['ajax'])) {
                     l.num_of_teams,
                     l.system,
                     l.activated,
-                    'Owner' as role
-                FROM leagues l
-                WHERE l.owner = ? OR l.other_owner = ?
-            ");
-            $stmt->execute([$id, $id]);
-            $ownerLeagues = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Get leagues where this account is a contributor
-            $stmt = $pdo->prepare("
-                SELECT 
-                    l.id,
-                    l.name,
-                    l.num_of_players,
-                    l.num_of_teams,
-                    l.system,
-                    l.activated,
-                    lc.role,
+                    CASE 
+                        WHEN l.owner = ? OR l.other_owner = ? THEN 'Owner'
+                        ELSE lc.role
+                    END as role,
                     lc.total_score
-                FROM league_contributors lc
-                JOIN leagues l ON lc.league_id = l.id
-                WHERE lc.user_id = ?
+                FROM leagues l
+                LEFT JOIN league_contributors lc ON l.id = lc.league_id AND lc.user_id = ?
+                WHERE l.owner = ? OR l.other_owner = ? OR lc.user_id = ?
             ");
-            $stmt->execute([$id]);
-            $contributorLeagues = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $stmt->execute([$id, $id, $id, $id, $id, $id]);
+            $leagues = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // Merge all leagues
-            $account['leagues'] = array_merge($ownerLeagues, $contributorLeagues);
+            $account['leagues'] = $leagues;
             
             echo json_encode($account);
             
@@ -153,6 +138,30 @@ try {
     $stmt = $pdo->prepare("SELECT * FROM accounts $where_clause ORDER BY created_at DESC");
     $stmt->execute($params);
     $accounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Add stats to each account
+    foreach ($accounts as &$account) {
+        $id = $account['id'];
+        
+        // Count admin leagues (owner, other_owner, or role='Admin')
+        $stmt = $pdo->prepare("
+            SELECT COUNT(DISTINCT l.id)
+            FROM leagues l
+            LEFT JOIN league_contributors lc ON l.id = lc.league_id AND lc.user_id = ?
+            WHERE l.owner = ? OR l.other_owner = ? OR (lc.user_id = ? AND lc.role = 'Admin')
+        ");
+        $stmt->execute([$id, $id, $id, $id]);
+        $account['admin_leagues'] = $stmt->fetchColumn();
+        
+        // Count contributor leagues (role='Contributor')
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM league_contributors
+            WHERE user_id = ? AND role = 'Contributor'
+        ");
+        $stmt->execute([$id]);
+        $account['contrib_leagues'] = $stmt->fetchColumn();
+    }
 } catch (PDOException $e) {
     $error_message = "Database error: " . $e->getMessage();
     $accounts = [];
@@ -617,6 +626,7 @@ include 'includes/sidebar.php';
                         <th>Phone</th>
                         <th>Status</th>
                         <th>Created At</th>
+                        <th>Stats</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -635,8 +645,8 @@ include 'includes/sidebar.php';
                                         <span class="badge badge-warning">Pending</span>
                                     <?php endif; ?>
                                 </td>
-
                                 <td><?php echo date('M d, Y', strtotime($account['created_at'])); ?></td>
+                                <td>Admin: <?php echo $account['admin_leagues']; ?> | Contributor: <?php echo $account['contrib_leagues']; ?></td>
                                 <td>
                                     <div class="action-buttons">
                                         <button class="btn btn-info btn-sm" onclick="viewAccount(<?php echo $account['id']; ?>)">👁️ View</button>
@@ -868,6 +878,9 @@ include 'includes/sidebar.php';
                                     <span class="badge ${league.activated == 1 ? 'badge-success' : 'badge-warning'}">
                                         ${league.activated == 1 ? 'Active' : 'Inactive'}
                                     </span>
+                                </div>
+                                <div class="league-info-item">
+                                    <strong>Total Score:</strong> ${league.total_score ?? 'N/A'}
                                 </div>
                             </div>
                         </div>`;

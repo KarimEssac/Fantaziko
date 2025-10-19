@@ -1,8 +1,7 @@
 <?php
 session_start();
 require_once 'config/db.php';
-
-// Handle AJAX requests
+require_once 'includes/auth_check.php';
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
     
@@ -69,7 +68,7 @@ if (isset($_GET['ajax'])) {
                 LEFT JOIN league_teams lt ON lp.team_id = lt.id
                 LEFT JOIN matches_points mp ON mp.scorer = lp.player_id
                 LEFT JOIN matches m ON mp.match_id = m.match_id
-                WHERE lp.league_id = ? AND m.league_id = ?
+                WHERE lp.league_id = ? AND m.league_id = ? AND mp.scorer IS NOT NULL
                 GROUP BY lp.player_id, lp.player_name, lp.player_role, lt.team_name
                 HAVING goals_scored > 0
                 ORDER BY goals_scored DESC, matches_with_goals ASC
@@ -99,7 +98,7 @@ if (isset($_GET['ajax'])) {
                 LEFT JOIN league_teams lt ON lp.team_id = lt.id
                 LEFT JOIN matches_points mp ON mp.assister = lp.player_id
                 LEFT JOIN matches m ON mp.match_id = m.match_id
-                WHERE lp.league_id = ? AND m.league_id = ?
+                WHERE lp.league_id = ? AND m.league_id = ? AND mp.assister IS NOT NULL
                 GROUP BY lp.player_id, lp.player_name, lp.player_role, lt.team_name
                 HAVING assists_made > 0
                 ORDER BY assists_made DESC, matches_with_assists ASC
@@ -123,14 +122,15 @@ if (isset($_GET['ajax'])) {
                     lp.player_name,
                     lp.player_role,
                     lt.team_name,
-                    SUM(mp.yellow_card) as yellow_cards,
-                    SUM(mp.red_card) as red_cards,
-                    (SUM(mp.yellow_card) + (SUM(mp.red_card) * 3)) as discipline_score
+                    COALESCE(SUM(CASE WHEN mp.minus = lp.player_id THEN mp.yellow_card ELSE 0 END), 0) as yellow_cards,
+                    COALESCE(SUM(CASE WHEN mp.minus = lp.player_id THEN mp.red_card ELSE 0 END), 0) as red_cards,
+                    (COALESCE(SUM(CASE WHEN mp.minus = lp.player_id THEN mp.yellow_card ELSE 0 END), 0) + 
+                     (COALESCE(SUM(CASE WHEN mp.minus = lp.player_id THEN mp.red_card ELSE 0 END), 0) * 3)) as discipline_score
                 FROM league_players lp
                 LEFT JOIN league_teams lt ON lp.team_id = lt.id
-                LEFT JOIN matches_points mp ON (mp.minus = lp.player_id)
+                LEFT JOIN matches_points mp ON mp.minus = lp.player_id
                 LEFT JOIN matches m ON mp.match_id = m.match_id
-                WHERE lp.league_id = ? AND m.league_id = ?
+                WHERE lp.league_id = ? AND (m.league_id = ? OR m.league_id IS NULL)
                 GROUP BY lp.player_id, lp.player_name, lp.player_role, lt.team_name
                 HAVING (yellow_cards > 0 OR red_cards > 0)
                 ORDER BY discipline_score DESC, red_cards DESC, yellow_cards DESC
@@ -657,7 +657,7 @@ include 'includes/sidebar.php';
 
 <div class="main-content">
     <div class="page-header">
-        <h1 class="page-title">🥇 Leaderboards</h1>
+        <h1 class="page-title">🏅 Leaderboards</h1>
     </div>
     
     <?php if (isset($error_message)): ?>
@@ -665,12 +665,12 @@ include 'includes/sidebar.php';
     <?php endif; ?>
     
     <div class="tabs">
-        <button class="tab active" onclick="switchTab('league-selection')">🏆 Select League</button>
-        <button class="tab tab-disabled" id="contributorsTab" disabled>👥 Contributors</button>
-        <button class="tab tab-disabled" id="teamsTab" disabled>🎯 Teams</button>
-        <button class="tab tab-disabled" id="scorersTab" disabled>⚽ Top Scorers</button>
-        <button class="tab tab-disabled" id="assistersTab" disabled>🎯 Top Assisters</button>
-        <button class="tab tab-disabled" id="disciplinaryTab" disabled>🟨 Disciplinary</button>
+        <button class="tab active" onclick="switchTab('league-selection', this)">🏆 Select League</button>
+        <button class="tab tab-disabled" id="contributorsTab" onclick="switchTab('contributors-leaderboard', this)" disabled>👥 Contributors</button>
+        <button class="tab tab-disabled" id="teamsTab" onclick="switchTab('teams-leaderboard', this)" disabled>🎯 Teams</button>
+        <button class="tab tab-disabled" id="scorersTab" onclick="switchTab('scorers-leaderboard', this)" disabled>⚽ Top Scorers</button>
+        <button class="tab tab-disabled" id="assistersTab" onclick="switchTab('assisters-leaderboard', this)" disabled>🎯 Top Assisters</button>
+        <button class="tab tab-disabled" id="disciplinaryTab" onclick="switchTab('disciplinary-leaderboard', this)" disabled>🟨 Disciplinary</button>
     </div>
     
     <!-- League Selection Tab -->
@@ -716,7 +716,7 @@ include 'includes/sidebar.php';
                                     </td>
                                     <td>
                                         <button class="btn btn-primary btn-sm" onclick="selectLeague(<?php echo $league['league_id']; ?>)">
-                                            🥇 View
+                                            🏅 View
                                         </button>
                                     </td>
                                 </tr>
@@ -959,14 +959,24 @@ include 'includes/sidebar.php';
     let currentTab = 'league-selection';
     let leagueData = null;
     
-    function switchTab(tabName) {
+    function switchTab(tabName, element) {
         const tabs = document.querySelectorAll('.tab');
         const contents = document.querySelectorAll('.tab-content');
         
         tabs.forEach(tab => tab.classList.remove('active'));
         contents.forEach(content => content.classList.remove('active'));
         
-        event.target.classList.add('active');
+        if (element) {
+            element.classList.add('active');
+        } else {
+            // Find the tab button by its onclick attribute containing the tabName
+            const tabButtons = document.querySelectorAll('.tab');
+            tabButtons.forEach(btn => {
+                if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(tabName)) {
+                    btn.classList.add('active');
+                }
+            });
+        }
         document.getElementById(tabName).classList.add('active');
         
         currentTab = tabName;

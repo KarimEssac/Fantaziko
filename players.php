@@ -1,8 +1,7 @@
 <?php
 session_start();
 require_once 'config/db.php';
-
-// Handle AJAX requests
+require_once 'includes/auth_check.php';
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
     
@@ -93,6 +92,137 @@ if ($_GET['ajax'] === 'get_league_teams' && isset($_GET['league_id'])) {
         $players = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         echo json_encode($players);
+    } catch (PDOException $e) {
+        echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
+    }
+    exit();
+}
+
+    // Get player statistics
+if ($_GET['ajax'] === 'get_player_stats' && isset($_GET['player_id'])) {
+    try {
+        // Get player basic info
+        $stmt = $pdo->prepare("
+            SELECT 
+                lp.*,
+                lt.team_name,
+                l.name as league_name,
+                l.system as league_system
+            FROM league_players lp
+            LEFT JOIN league_teams lt ON lp.team_id = lt.id
+            LEFT JOIN leagues l ON lp.league_id = l.id
+            WHERE lp.player_id = ?
+        ");
+        $stmt->execute([$_GET['player_id']]);
+        $player = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$player) {
+            echo json_encode(['error' => 'Player not found']);
+            exit();
+        }
+        
+        // Get league scoring rules
+        $stmt = $pdo->prepare("SELECT * FROM league_roles WHERE league_id = ?");
+        $stmt->execute([$player['league_id']]);
+        $rules = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Get player statistics from matches_points
+        $stmt = $pdo->prepare("
+            SELECT 
+                COUNT(CASE WHEN scorer = ? THEN 1 END) as goals,
+                COUNT(CASE WHEN assister = ? THEN 1 END) as assists,
+                COUNT(CASE WHEN bonus = ? THEN 1 END) as bonus_count,
+                COUNT(CASE WHEN minus = ? THEN 1 END) as minus_count,
+                SUM(CASE WHEN scorer = ? THEN bonus_points ELSE 0 END) as bonus_from_goals,
+                SUM(CASE WHEN assister = ? THEN bonus_points ELSE 0 END) as bonus_from_assists,
+                SUM(CASE WHEN bonus = ? THEN bonus_points ELSE 0 END) as bonus_from_bonus,
+                SUM(CASE WHEN minus = ? THEN minus_points ELSE 0 END) as minus_from_minus,
+                SUM(yellow_card) as yellow_cards,
+                SUM(red_card) as red_cards,
+                COUNT(CASE WHEN saved_penalty_gk = ? THEN 1 END) as penalties_saved,
+                COUNT(CASE WHEN missed_penalty_player = ? THEN 1 END) as penalties_missed
+            FROM matches_points
+            WHERE scorer = ? OR assister = ? OR bonus = ? OR minus = ? 
+               OR saved_penalty_gk = ? OR missed_penalty_player = ?
+        ");
+        $stmt->execute([
+            $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], $_GET['player_id'],
+            $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], $_GET['player_id'],
+            $_GET['player_id'], $_GET['player_id'],
+            $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], $_GET['player_id'],
+            $_GET['player_id'], $_GET['player_id']
+        ]);
+        $stats = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Get clean sheets (matches where team didn't concede)
+        $cleanSheets = 0;
+        if (in_array($player['player_role'], ['GK', 'DEF'])) {
+            $stmt = $pdo->prepare("
+                SELECT COUNT(DISTINCT m.match_id) as clean_sheets
+                FROM matches m
+                INNER JOIN league_players lp ON lp.team_id IN (m.team1_id, m.team2_id)
+                WHERE lp.player_id = ?
+                AND (
+                    (lp.team_id = m.team1_id AND m.team2_score = 0) OR
+                    (lp.team_id = m.team2_id AND m.team1_score = 0)
+                )
+            ");
+            $stmt->execute([$_GET['player_id']]);
+            $csResult = $stmt->fetch(PDO::FETCH_ASSOC);
+            $cleanSheets = $csResult['clean_sheets'] ?? 0;
+        }
+        
+        // Get number of contributors who have this player in their lineup
+        $stmt = $pdo->prepare("
+            SELECT COUNT(DISTINCT user_id) as lineup_count
+            FROM league_contributors
+            WHERE league_id = ?
+            AND (
+                goalkeeper = ? OR
+                defender1 = ? OR defender2 = ? OR defender3 = ? OR defender4 = ? OR defender5 = ? OR
+                midfielder1 = ? OR midfielder2 = ? OR midfielder3 = ? OR midfielder4 = ? OR midfielder5 = ? OR
+                forward1 = ? OR forward2 = ? OR forward3 = ? OR
+                sub_goalkeeper = ? OR
+                sub_defender1 = ? OR sub_defender2 = ? OR
+                sub_midfielder1 = ? OR sub_midfielder2 = ? OR
+                sub_forward1 = ? OR sub_forward2 = ?
+            )
+        ");
+        $stmt->execute([
+            $player['league_id'],
+            $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], 
+            $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], 
+            $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], 
+            $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], 
+            $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], 
+            $_GET['player_id']
+        ]);
+        $lineupResult = $stmt->fetch(PDO::FETCH_ASSOC);
+        $lineupCount = $lineupResult['lineup_count'] ?? 0;
+
+        // Use total_points from league_players table instead of calculating
+        $totalPoints = $player['total_points'] ?? 0;
+
+        // Compile response
+        $response = [
+            'player' => $player,
+            'rules' => $rules,
+            'lineup_count' => $lineupCount,
+            'stats' => [
+                'goals' => $stats['goals'] ?? 0,
+                'assists' => $stats['assists'] ?? 0,
+                'clean_sheets' => $cleanSheets,
+                'penalties_saved' => $stats['penalties_saved'] ?? 0,
+                'penalties_missed' => $stats['penalties_missed'] ?? 0,
+                'yellow_cards' => $stats['yellow_cards'] ?? 0,
+                'red_cards' => $stats['red_cards'] ?? 0,
+                'bonus_count' => $stats['bonus_count'] ?? 0,
+                'minus_count' => $stats['minus_count'] ?? 0,
+                'total_points' => $totalPoints
+            ]
+        ];
+        
+        echo json_encode($response);
     } catch (PDOException $e) {
         echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
     }
@@ -288,6 +418,15 @@ include 'includes/sidebar.php';
     
     .btn-info:hover {
         background: #138496;
+    }
+    
+    .btn-success {
+        background: #28a745;
+        color: #FFFFFF;
+    }
+    
+    .btn-success:hover {
+        background: #218838;
     }
     
     .btn-sm {
@@ -603,6 +742,7 @@ include 'includes/sidebar.php';
     .action-buttons {
         display: flex;
         gap: 8px;
+        flex-wrap: wrap;
     }
     
     .info-card {
@@ -688,6 +828,127 @@ include 'includes/sidebar.php';
         color: #F1A155;
     }
     
+    .player-profile {
+        display: flex;
+        gap: 20px;
+        align-items: center;
+        padding: 20px;
+        background: linear-gradient(135deg, rgba(29, 96, 172, 0.1), rgba(10, 146, 215, 0.1));
+        border-radius: 12px;
+        margin-bottom: 20px;
+    }
+    
+    .player-avatar {
+        width: 100px;
+        height: 100px;
+        background: linear-gradient(135deg, #1D60AC, #0A92D7);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 40px;
+        font-weight: 700;
+        flex-shrink: 0;
+    }
+    
+    .player-info {
+        flex: 1;
+    }
+    
+    .player-name-large {
+        font-size: 28px;
+        font-weight: 700;
+        color: #1D60AC;
+        margin-bottom: 8px;
+    }
+    
+    .player-meta {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+        font-size: 14px;
+        color: #666;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .stat-card {
+        background: #FFFFFF;
+        border-radius: 8px;
+        padding: 20px;
+        border: 2px solid #e9ecef;
+        transition: all 0.3s ease;
+    }
+    
+    .stat-card:hover {
+        border-color: #1D60AC;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(29, 96, 172, 0.1);
+    }
+    
+    .stat-card-positive {
+        border-left: 4px solid #28a745;
+    }
+    
+    .stat-card-negative {
+        border-left: 4px solid #dc3545;
+    }
+    
+    .stat-card-neutral {
+        border-left: 4px solid #17a2b8;
+    }
+    
+    .stat-card-icon {
+        font-size: 32px;
+        margin-bottom: 10px;
+    }
+    
+    .stat-card-title {
+        font-size: 12px;
+        color: #666;
+        text-transform: uppercase;
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+    
+    .stat-card-value {
+        font-size: 32px;
+        font-weight: 700;
+        color: #1D60AC;
+    }
+    
+    .stat-card-points {
+        font-size: 14px;
+        color: #999;
+        margin-top: 5px;
+    }
+    
+    .total-points-card {
+        background: linear-gradient(135deg, #28a745, #20c997);
+        color: white;
+        padding: 30px;
+        border-radius: 12px;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    
+    .total-points-label {
+        font-size: 16px;
+        opacity: 0.9;
+        margin-bottom: 10px;
+    }
+    
+    .total-points-value {
+        font-size: 56px;
+        font-weight: 700;
+    }
+    
     @media (max-width: 768px) {
         .main-content {
             margin-left: 0;
@@ -723,6 +984,19 @@ include 'includes/sidebar.php';
         .stats-row {
             grid-template-columns: repeat(2, 1fr);
         }
+        
+        .stats-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .player-profile {
+            flex-direction: column;
+            text-align: center;
+        }
+        
+        .player-meta {
+            justify-content: center;
+        }
     }
 </style>
 
@@ -742,6 +1016,7 @@ include 'includes/sidebar.php';
     <div class="tabs">
         <button class="tab active" onclick="switchTab('league-selection')">🏆 Select League</button>
         <button class="tab tab-disabled" id="playersTab" disabled>⚽ Players Management</button>
+        <button class="tab tab-disabled" id="playerStatsTab" disabled>📊 Player Statistics</button>
     </div>
     
     <!-- League Selection Tab -->
@@ -826,7 +1101,7 @@ include 'includes/sidebar.php';
             <div class="info-card">
                 <div class="info-card-title">⚽ About Players Management</div>
                 <div class="info-card-text">
-                    Manage players within the selected league. You can add new players, edit player information (name, position, price), and delete players. Players are categorized by their roles: Goalkeeper (GK), Defender (DEF), Midfielder (MID), and Attacker (ATT). Note: Player prices are only relevant for leagues with "Budget" system enabled.
+                    Manage players within the selected league. You can add new players, edit player information (name, position, price), view detailed statistics, and delete players. Players are categorized by their roles: Goalkeeper (GK), Defender (DEF), Midfielder (MID), and Attacker (ATT).
                 </div>
             </div>
             
@@ -850,23 +1125,46 @@ include 'includes/sidebar.php';
             </div>
             
             <div class="table-container">
-                <table class="data-table">
+                <table class="data-table" id="playersTable">
                     <thead>
-    <tr>
-        <th>Player ID</th>
-        <th>Player Name</th>
-        <th>Team</th>
-        <th>Position</th>
-        <th>Price</th>
-        <th>Actions</th>
-    </tr>
-</thead>
+                        <tr>
+                            <th>Player ID</th>
+                            <th>Player Name</th>
+                            <th>Team</th>
+                            <th>Position</th>
+                            <th id="priceHeader">Price</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
                     <tbody id="playersTableBody">
                         <tr>
-                            <td colspan="5" style="text-align: center; color: #999; padding: 30px;">Select a league to view players</td>
+                            <td colspan="6" style="text-align: center; color: #999; padding: 30px;">Select a league to view players</td>
                         </tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Player Statistics Tab -->
+    <div id="player-statistics" class="tab-content">
+        <div class="data-card">
+            <div class="data-card-header">
+                <div class="header-info">
+                    <div class="header-title" id="statsPlayerName">Player Statistics</div>
+                    <div class="header-meta" id="statsPlayerMeta"></div>
+                </div>
+                <button class="back-btn" onclick="backToPlayers()">
+                    ← Back to Players
+                </button>
+            </div>
+            
+            <div style="padding: 25px;">
+                <div id="playerStatsContent">
+                    <div style="text-align: center; color: #999; padding: 50px;">
+                        Select a player to view statistics
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -884,11 +1182,11 @@ include 'includes/sidebar.php';
                 <input type="hidden" name="action" value="add_player">
                 <input type="hidden" name="league_id" id="addPlayerLeagueId">
                 <div class="form-group">
-    <label class="form-label">Team *</label>
-    <select name="team_id" id="addPlayerTeam" class="form-control" required>
-        <option value="">Select Team</option>
-    </select>
-</div>
+                    <label class="form-label">Team *</label>
+                    <select name="team_id" id="addPlayerTeam" class="form-control" required>
+                        <option value="">Select Team</option>
+                    </select>
+                </div>
                 <div class="form-group">
                     <label class="form-label">Player Name *</label>
                     <input type="text" name="player_name" id="addPlayerName" class="form-control" required placeholder="Enter player name">
@@ -906,15 +1204,15 @@ include 'includes/sidebar.php';
                 </div>
                 
                 <div class="form-group" id="addPlayerPriceGroup" style="display: none;">
-    <label class="form-label">Price <span id="addPriceOptional" style="color: #999; font-weight: normal;">(Optional)</span></label>
-    <input type="number" name="player_price" id="addPlayerPrice" class="form-control" step="0.01" min="0" placeholder="Enter player price">
-</div>
+                    <label class="form-label">Price <span id="addPriceOptional" style="color: #999; font-weight: normal;">(Optional)</span></label>
+                    <input type="number" name="player_price" id="addPlayerPrice" class="form-control" step="0.01" min="0" placeholder="Enter player price">
+                </div>
 
-<div class="info-card" id="addPlayerPriceInfo" style="display: none;">
-    <div class="info-card-text">
-        💡 This league uses a "Budget" system. Player prices are important for team building.
-    </div>
-</div>
+                <div class="info-card" id="addPlayerPriceInfo" style="display: none;">
+                    <div class="info-card-text">
+                        💡 This league uses a "Budget" system. Player prices are important for team building.
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-danger" onclick="closeAddPlayerModal()">Cancel</button>
@@ -936,11 +1234,11 @@ include 'includes/sidebar.php';
                 <input type="hidden" name="action" value="update_player">
                 <input type="hidden" name="player_id" id="editPlayerId">
                 <div class="form-group">
-    <label class="form-label">Team *</label>
-    <select name="team_id" id="editPlayerTeam" class="form-control" required>
-        <option value="">Select Team</option>
-    </select>
-</div>
+                    <label class="form-label">Team *</label>
+                    <select name="team_id" id="editPlayerTeam" class="form-control" required>
+                        <option value="">Select Team</option>
+                    </select>
+                </div>
                 <div class="form-group">
                     <label class="form-label">Player Name *</label>
                     <input type="text" name="player_name" id="editPlayerName" class="form-control" required>
@@ -1014,7 +1312,9 @@ include 'includes/sidebar.php';
     let currentLeagueId = null;
     let currentLeagueSystem = null;
     let currentTab = 'league-selection';
-let currentLeagueTeams = [];
+    let currentLeagueTeams = [];
+    let currentPlayerId = null;
+    
     function switchTab(tabName) {
         const tabs = document.querySelectorAll('.tab');
         const contents = document.querySelectorAll('.tab-content');
@@ -1045,54 +1345,54 @@ let currentLeagueTeams = [];
     }
     
     function selectLeague(leagueId) {
-    currentLeagueId = leagueId;
-    
-    // Enable the players tab
-    const playersTab = document.getElementById('playersTab');
-    playersTab.disabled = false;
-    playersTab.classList.remove('tab-disabled');
-    playersTab.onclick = function() { switchTab('players-management'); };
-    
-    // Load league info and teams
-    Promise.all([
-        fetch('?ajax=get_league_info&league_id=' + leagueId).then(r => r.json()),
-        fetch('?ajax=get_league_teams&league_id=' + leagueId).then(r => r.json())
-    ])
-    .then(([leagueData, teamsData]) => {
-        if (leagueData.error) {
-            alert('Error: ' + leagueData.error);
-            return;
-        }
+        currentLeagueId = leagueId;
         
-        if (teamsData.error) {
-            alert('Error loading teams: ' + teamsData.error);
-            return;
-        }
+        // Enable the players tab
+        const playersTab = document.getElementById('playersTab');
+        playersTab.disabled = false;
+        playersTab.classList.remove('tab-disabled');
+        playersTab.onclick = function() { switchTab('players-management'); };
         
-        currentLeagueSystem = leagueData.system;
-        currentLeagueTeams = teamsData;
-        
-        // Update league header
-        updateLeagueHeader(leagueData);
-        
-        // Switch to players tab and load data
-        document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-        
-        playersTab.classList.add('active');
-        document.getElementById('players-management').classList.add('active');
-        currentTab = 'players-management';
-        
-        // Show add player button
-        document.getElementById('addPlayerBtn').style.display = 'inline-flex';
-        
-        loadLeaguePlayers(leagueId);
-    })
-    .catch(error => {
-        console.error(error);
-        alert('Error loading league information');
-    });
-}
+        // Load league info and teams
+        Promise.all([
+            fetch('?ajax=get_league_info&league_id=' + leagueId).then(r => r.json()),
+            fetch('?ajax=get_league_teams&league_id=' + leagueId).then(r => r.json())
+        ])
+        .then(([leagueData, teamsData]) => {
+            if (leagueData.error) {
+                alert('Error: ' + leagueData.error);
+                return;
+            }
+            
+            if (teamsData.error) {
+                alert('Error loading teams: ' + teamsData.error);
+                return;
+            }
+            
+            currentLeagueSystem = leagueData.system;
+            currentLeagueTeams = teamsData;
+            
+            // Update league header
+            updateLeagueHeader(leagueData);
+            
+            // Switch to players tab and load data
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            playersTab.classList.add('active');
+            document.getElementById('players-management').classList.add('active');
+            currentTab = 'players-management';
+            
+            // Show add player button
+            document.getElementById('addPlayerBtn').style.display = 'inline-flex';
+            
+            loadLeaguePlayers(leagueId);
+        })
+        .catch(error => {
+            console.error(error);
+            alert('Error loading league information');
+        });
+    }
     
     function updateLeagueHeader(league) {
         const ownerText = 'Owner: ' + (league.owner_name || 'N/A') + 
@@ -1120,11 +1420,16 @@ let currentLeagueTeams = [];
         document.querySelectorAll('.tab')[0].classList.add('active');
         document.getElementById('league-selection').classList.add('active');
         
-        // Disable the players tab
+        // Disable the players tab and stats tab
         const playersTab = document.getElementById('playersTab');
         playersTab.disabled = true;
         playersTab.classList.add('tab-disabled');
         playersTab.onclick = null;
+        
+        const statsTab = document.getElementById('playerStatsTab');
+        statsTab.disabled = true;
+        statsTab.classList.add('tab-disabled');
+        statsTab.onclick = null;
         
         // Hide add player button and stats
         document.getElementById('addPlayerBtn').style.display = 'none';
@@ -1133,79 +1438,116 @@ let currentLeagueTeams = [];
         currentTab = 'league-selection';
         currentLeagueId = null;
         currentLeagueSystem = null;
+        currentPlayerId = null;
+    }
+    
+    function backToPlayers() {
+        document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        
+        const playersTab = document.getElementById('playersTab');
+        playersTab.classList.add('active');
+        document.getElementById('players-management').classList.add('active');
+        
+        currentTab = 'players-management';
+        
+        // Disable stats tab
+        const statsTab = document.getElementById('playerStatsTab');
+        statsTab.disabled = true;
+        statsTab.classList.add('tab-disabled');
+        statsTab.onclick = null;
+        
+        currentPlayerId = null;
     }
     
     function loadLeaguePlayers(leagueId) {
-    const tbody = document.getElementById('playersTableBody');
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #999;">Loading...</td></tr>';
-    
-    fetch('?ajax=get_league_players&league_id=' + leagueId)
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #dc3545;">Error: ' + data.error + '</td></tr>';
-                return;
-            }
-            
-            if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #999;">No players found in this league. Click "Add Player" to create one.</td></tr>';
-                document.getElementById('playersStatsRow').style.display = 'none';
-                return;
-            }
-            
-            // Calculate statistics
-            const stats = { GK: 0, DEF: 0, MID: 0, ATT: 0 };
-            data.forEach(player => {
-                if (stats.hasOwnProperty(player.player_role)) {
-                    stats[player.player_role]++;
+        const tbody = document.getElementById('playersTableBody');
+        const priceHeader = document.getElementById('priceHeader');
+        
+        // Show/hide price column based on league system
+        if (currentLeagueSystem === 'No Limits') {
+            priceHeader.style.display = 'none';
+        } else {
+            priceHeader.style.display = '';
+        }
+        
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #999;">Loading...</td></tr>';
+        
+        fetch('?ajax=get_league_players&league_id=' + leagueId)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #dc3545;">Error: ' + data.error + '</td></tr>';
+                    return;
                 }
-            });
-            
-            // Update stats display
-            document.getElementById('statGK').textContent = stats.GK;
-            document.getElementById('statDEF').textContent = stats.DEF;
-            document.getElementById('statMID').textContent = stats.MID;
-            document.getElementById('statATT').textContent = stats.ATT;
-            document.getElementById('playersStatsRow').style.display = 'grid';
-            
-            let html = '';
-            data.forEach(player => {
-                const roleBadge = getRoleBadge(player.player_role);
-                const priceDisplay = player.player_price ? 
-                    '<span class="price-display">$' + parseFloat(player.player_price).toFixed(2) + '</span>' : 
-                    '<span style="color: #999;">N/A</span>';
-                const teamDisplay = player.team_name ? 
-                    '<strong>' + player.team_name + '</strong>' : 
-                    '<span style="color: #999;">No Team</span>';
                 
-                html += `
-                    <tr>
-                        <td>${player.player_id}</td>
-                        <td><strong>${player.player_name}</strong></td>
-                        <td>${teamDisplay}</td>
-                        <td>${roleBadge}</td>
-                        <td>${priceDisplay}</td>
-                        <td>
-                            <div class="action-buttons">
-                                <button class="btn btn-secondary btn-sm" onclick="editPlayer(${player.player_id})">
-                                    ✏️ Edit
-                                </button>
-                                <button class="btn btn-danger btn-sm" onclick="deletePlayer(${player.player_id}, '${player.player_name.replace(/'/g, "\\'")}', '${player.player_role}')">
-                                    🗑️ Delete
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #999;">No players found in this league. Click "Add Player" to create one.</td></tr>';
+                    document.getElementById('playersStatsRow').style.display = 'none';
+                    return;
+                }
+                
+                // Calculate statistics
+                const stats = { GK: 0, DEF: 0, MID: 0, ATT: 0 };
+                data.forEach(player => {
+                    if (stats.hasOwnProperty(player.player_role)) {
+                        stats[player.player_role]++;
+                    }
+                });
+                
+                // Update stats display
+                document.getElementById('statGK').textContent = stats.GK;
+                document.getElementById('statDEF').textContent = stats.DEF;
+                document.getElementById('statMID').textContent = stats.MID;
+                document.getElementById('statATT').textContent = stats.ATT;
+                document.getElementById('playersStatsRow').style.display = 'grid';
+                
+                let html = '';
+                data.forEach(player => {
+                    const roleBadge = getRoleBadge(player.player_role);
+                    const teamDisplay = player.team_name ? 
+                        '<strong>' + player.team_name + '</strong>' : 
+                        '<span style="color: #999;">No Team</span>';
+                    
+                    let priceCell = '';
+                    if (currentLeagueSystem !== 'No Limits') {
+                        const priceDisplay = player.player_price ? 
+                            '<span class="price-display">' + parseFloat(player.player_price).toFixed(2) + '</span>' : 
+                            '<span style="color: #999;">N/A</span>';
+                        priceCell = `<td>${priceDisplay}</td>`;
+                    }
+                    
+                    html += `
+                        <tr>
+                            <td>${player.player_id}</td>
+                            <td><strong>${player.player_name}</strong></td>
+                            <td>${teamDisplay}</td>
+                            <td>${roleBadge}</td>
+                            ${priceCell}
+                            <td>
+                                <div class="action-buttons">
+                                    <button class="btn btn-success btn-sm" onclick="viewPlayerStats(${player.player_id})">
+                                        📊 Stats
+                                    </button>
+                                    <button class="btn btn-secondary btn-sm" onclick="editPlayer(${player.player_id})">
+                                        ✏️ Edit
+                                    </button>
+                                    <button class="btn btn-danger btn-sm" onclick="deletePlayer(${player.player_id}, '${player.player_name.replace(/'/g, "\\'")}', '${player.player_role}')">
+                                        🗑️ Delete
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+                
+                tbody.innerHTML = html;
+            })
+            .catch(error => {
+                console.error(error);
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #dc3545;">Error loading players</td></tr>';
             });
-            
-            tbody.innerHTML = html;
-        })
-        .catch(error => {
-            console.error(error);
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #dc3545;">Error loading players</td></tr>';
-        });
-}
+    }
     
     function getRoleBadge(role) {
         const badges = {
@@ -1217,97 +1559,265 @@ let currentLeagueTeams = [];
         return badges[role] || '<span class="badge badge-info">' + role + '</span>';
     }
     
-    function openAddPlayerModal() {
-    document.getElementById('addPlayerLeagueId').value = currentLeagueId;
-    document.getElementById('addPlayerName').value = '';
-    document.getElementById('addPlayerRole').value = '';
-    document.getElementById('addPlayerPrice').value = '';
-    
-    // Populate team dropdown
-    populateTeamDropdown('addPlayerTeam');
-    
-    // Show/hide price field based on league system
-    if (currentLeagueSystem === 'Budget') {
-        document.getElementById('addPlayerPriceGroup').style.display = 'block';
-        document.getElementById('addPlayerPriceInfo').style.display = 'block';
-        document.getElementById('addPriceOptional').style.display = 'none';
-        document.getElementById('addPlayerPrice').required = true;
-    } else {
-        document.getElementById('addPlayerPriceGroup').style.display = 'none';
-        document.getElementById('addPlayerPriceInfo').style.display = 'none';
-        document.getElementById('addPlayerPrice').required = false;
+    function viewPlayerStats(playerId) {
+        currentPlayerId = playerId;
+        
+        // Enable stats tab
+        const statsTab = document.getElementById('playerStatsTab');
+        statsTab.disabled = false;
+        statsTab.classList.remove('tab-disabled');
+        statsTab.onclick = function() { switchTab('player-statistics'); };
+        
+        // Switch to stats tab
+        document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        
+        statsTab.classList.add('active');
+        document.getElementById('player-statistics').classList.add('active');
+        currentTab = 'player-statistics';
+        
+        // Load player stats
+        loadPlayerStats(playerId);
     }
     
-    document.getElementById('addPlayerModal').classList.add('active');
-}
+    function loadPlayerStats(playerId) {
+    const content = document.getElementById('playerStatsContent');
+    content.innerHTML = '<div style="text-align: center; padding: 50px; color: #999;">Loading statistics...</div>';
     
-    function closeAddPlayerModal() {
-        document.getElementById('addPlayerModal').classList.remove('active');
-    }
-    function populateTeamDropdown(selectId) {
-    const select = document.getElementById(selectId);
-    select.innerHTML = '<option value="">Select Team</option>';
-    
-    if (!currentLeagueTeams || currentLeagueTeams.length === 0) {
-        select.innerHTML = '<option value="">No teams available</option>';
-        select.disabled = true;
-        return;
-    }
-    
-    select.disabled = false;
-    currentLeagueTeams.forEach(team => {
-        const option = document.createElement('option');
-        option.value = team.id;
-        option.textContent = team.team_name;
-        select.appendChild(option);
-    });
-}
-    function editPlayer(playerId) {
-    fetch('?ajax=get_player&player_id=' + playerId)
+    fetch('?ajax=get_player_stats&player_id=' + playerId)
         .then(response => response.json())
         .then(data => {
             if (data.error) {
-                alert('Error: ' + data.error);
+                content.innerHTML = '<div style="text-align: center; padding: 50px; color: #dc3545;">Error: ' + data.error + '</div>';
                 return;
             }
             
-            document.getElementById('editPlayerId').value = data.player_id;
-            document.getElementById('editPlayerName').value = data.player_name;
-            document.getElementById('editPlayerRole').value = data.player_role;
-            document.getElementById('editPlayerPrice').value = data.player_price || '';
+            const player = data.player;
+            const stats = data.stats;
+            const rules = data.rules;
+            const lineupCount = data.lineup_count || 0;
             
-            // Populate and set team dropdown
-            populateTeamDropdown('editPlayerTeam');
-            document.getElementById('editPlayerTeam').value = data.team_id || '';
+            // Update header
+            document.getElementById('statsPlayerName').textContent = player.player_name;
+            const roleBadge = getRoleBadge(player.player_role);
+            const priceDisplay = player.player_price && currentLeagueSystem !== 'No Limits' ? 
+                ' | Price: <span class="price-display">' + parseFloat(player.player_price).toFixed(2) + '</span>' : '';
+            document.getElementById('statsPlayerMeta').innerHTML = `
+                <span>${roleBadge}</span>
+                <span>Team: ${player.team_name || 'N/A'}</span>
+                <span>League: ${player.league_name}</span>
+                <span>👥 Owned by: ${lineupCount} contributor${lineupCount !== 1 ? 's' : ''}</span>
+                ${priceDisplay}
+            `;
             
-            // Show/hide price info based on league system
-            if (data.league_system === 'Budget') {
-                document.getElementById('editPlayerPriceInfo').style.display = 'block';
-                document.getElementById('editPriceOptional').style.display = 'none';
-                document.getElementById('editPlayerPrice').required = true;
-            } else {
-                document.getElementById('editPlayerPriceInfo').style.display = 'none';
-                document.getElementById('editPriceOptional').style.display = 'inline';
-                document.getElementById('editPlayerPrice').required = false;
+            // Build stats display
+            let statsHtml = `
+                <div class="player-profile">
+                    <div class="player-avatar">
+                        ${player.player_name.charAt(0).toUpperCase()}
+                    </div>
+                    <div class="player-info">
+                        <div class="player-name-large">${player.player_name}</div>
+                        <div class="player-meta">
+                            <span>${getRoleText(player.player_role)}</span>
+                            <span>🏟️ ${player.team_name || 'No Team'}</span>
+                            <span>👥 Owned by ${lineupCount} contributor${lineupCount !== 1 ? 's' : ''}</span>
+                            ${player.player_price && currentLeagueSystem !== 'No Limits' ? '<span>💰 ' + parseFloat(player.player_price).toFixed(2) + '</span>' : ''}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="total-points-card">
+                    <div class="total-points-label">🏆 Total Fantasy Points</div>
+                    <div class="total-points-value">${stats.total_points}</div>
+                </div>
+                
+                <div class="stats-grid">
+            `;
+            
+            // Goals
+            const goalPoints = calculateGoalPoints(player.player_role, stats.goals, rules);
+            statsHtml += `
+                <div class="stat-card stat-card-positive">
+                    <div class="stat-card-icon">⚽</div>
+                    <div class="stat-card-title">Goals Scored</div>
+                    <div class="stat-card-value">${stats.goals}</div>
+                    <div class="stat-card-points">Points: +${goalPoints}</div>
+                </div>
+            `;
+            
+            // Assists
+            const assistPoints = calculateAssistPoints(player.player_role, stats.assists, rules);
+            statsHtml += `
+                <div class="stat-card stat-card-positive">
+                    <div class="stat-card-icon">🎯</div>
+                    <div class="stat-card-title">Assists</div>
+                    <div class="stat-card-value">${stats.assists}</div>
+                    <div class="stat-card-points">Points: +${assistPoints}</div>
+                </div>
+            `;
+            
+            // Clean Sheets (only for GK and DEF)
+            if (player.player_role === 'GK' || player.player_role === 'DEF') {
+                const csPoints = calculateCleanSheetPoints(player.player_role, stats.clean_sheets, rules);
+                statsHtml += `
+                    <div class="stat-card stat-card-positive">
+                        <div class="stat-card-icon">🛡️</div>
+                        <div class="stat-card-title">Clean Sheets</div>
+                        <div class="stat-card-value">${stats.clean_sheets}</div>
+                        <div class="stat-card-points">Points: +${csPoints}</div>
+                    </div>
+                `;
             }
             
-            document.getElementById('editPlayerModal').classList.add('active');
+            // Penalties Saved (only for GK)
+            if (player.player_role === 'GK') {
+                const penSavePoints = (stats.penalties_saved * (rules?.gk_save_penalty || 0));
+                statsHtml += `
+                    <div class="stat-card stat-card-positive">
+                        <div class="stat-card-icon">🧤</div>
+                        <div class="stat-card-title">Penalties Saved</div>
+                        <div class="stat-card-value">${stats.penalties_saved}</div>
+                        <div class="stat-card-points">Points: +${penSavePoints}</div>
+                    </div>
+                `;
+            }
+            
+            // Penalties Missed
+            const penMissPoints = (stats.penalties_missed * (rules?.miss_penalty || 0));
+            statsHtml += `
+                <div class="stat-card stat-card-negative">
+                    <div class="stat-card-icon">❌</div>
+                    <div class="stat-card-title">Penalties Missed</div>
+                    <div class="stat-card-value">${stats.penalties_missed}</div>
+                    <div class="stat-card-points">Points: ${penMissPoints}</div>
+                </div>
+            `;
+            
+            // Yellow Cards
+            const yellowPoints = (stats.yellow_cards * (rules?.yellow_card || 0));
+            statsHtml += `
+                <div class="stat-card stat-card-negative">
+                    <div class="stat-card-icon">🟨</div>
+                    <div class="stat-card-title">Yellow Cards</div>
+                    <div class="stat-card-value">${stats.yellow_cards}</div>
+                    <div class="stat-card-points">Points: ${yellowPoints}</div>
+                </div>
+            `;
+            
+            // Red Cards
+            const redPoints = (stats.red_cards * (rules?.red_card || 0));
+            statsHtml += `
+                <div class="stat-card stat-card-negative">
+                    <div class="stat-card-icon">🟥</div>
+                    <div class="stat-card-title">Red Cards</div>
+                    <div class="stat-card-value">${stats.red_cards}</div>
+                    <div class="stat-card-points">Points: ${redPoints}</div>
+                </div>
+            `;
+            
+            // Bonus Events
+            statsHtml += `
+                <div class="stat-card stat-card-neutral">
+                    <div class="stat-card-icon">⭐</div>
+                    <div class="stat-card-title">Bonus Events</div>
+                    <div class="stat-card-value">${stats.bonus_count}</div>
+                    <div class="stat-card-points">Performance bonuses</div>
+                </div>
+            `;
+            
+            // Minus Events
+            statsHtml += `
+                <div class="stat-card stat-card-neutral">
+                    <div class="stat-card-icon">⚠️</div>
+                    <div class="stat-card-title">Minus Events</div>
+                    <div class="stat-card-value">${stats.minus_count}</div>
+                    <div class="stat-card-points">Performance penalties</div>
+                </div>
+            `;
+            
+            statsHtml += `</div>`;
+            
+            // Add league scoring rules info
+            if (rules) {
+                statsHtml += `
+                    <div class="info-card">
+                        <div class="info-card-title">📋 League Scoring Rules</div>
+                        <div class="info-card-text">
+                            <strong>For ${getRoleText(player.player_role)}:</strong><br>
+                `;
+                
+                if (player.player_role === 'GK') {
+                    statsHtml += `
+                        • Goal: +${rules.gk_score || 0} points<br>
+                        • Assist: +${rules.gk_assist || 0} points<br>
+                        • Clean Sheet: +${rules.gk_clean_sheet || 0} points<br>
+                        • Penalty Saved: +${rules.gk_save_penalty || 0} points<br>
+                    `;
+                } else if (player.player_role === 'DEF') {
+                    statsHtml += `
+                        • Goal: +${rules.def_score || 0} points<br>
+                        • Assist: +${rules.def_assist || 0} points<br>
+                        • Clean Sheet: +${rules.def_clean_sheet || 0} points<br>
+                    `;
+                } else if (player.player_role === 'MID') {
+                    statsHtml += `
+                        • Goal: +${rules.mid_score || 0} points<br>
+                        • Assist: +${rules.mid_assist || 0} points<br>
+                    `;
+                } else if (player.player_role === 'ATT') {
+                    statsHtml += `
+                        • Goal: +${rules.for_score || 0} points<br>
+                        • Assist: +${rules.for_assist || 0} points<br>
+                    `;
+                }
+                
+                statsHtml += `
+                        • Penalty Missed: ${rules.miss_penalty || 0} points<br>
+                        • Yellow Card: ${rules.yellow_card || 0} points<br>
+                        • Red Card: ${rules.red_card || 0} points
+                        </div>
+                    </div>
+                `;
+            }
+            
+            content.innerHTML = statsHtml;
         })
         .catch(error => {
             console.error(error);
-            alert('Error loading player data');
+            content.innerHTML = '<div style="text-align: center; padding: 50px; color: #dc3545;">Error loading player statistics</div>';
         });
 }
     
-    function closeEditPlayerModal() {
-        document.getElementById('editPlayerModal').classList.remove('active');
+    function calculateGoalPoints(role, goals, rules) {
+        if (!rules) return 0;
+        switch(role) {
+            case 'GK': return goals * (rules.gk_score || 0);
+            case 'DEF': return goals * (rules.def_score || 0);
+            case 'MID': return goals * (rules.mid_score || 0);
+            case 'ATT': return goals * (rules.for_score || 0);
+            default: return 0;
+        }
     }
     
-    function deletePlayer(playerId, playerName, playerRole) {
-        document.getElementById('deletePlayerId').value = playerId;
-        document.getElementById('deletePlayerName').textContent = playerName;
-        document.getElementById('deletePlayerPosition').textContent = getRoleText(playerRole);
-        document.getElementById('deletePlayerModal').classList.add('active');
+    function calculateAssistPoints(role, assists, rules) {
+        if (!rules) return 0;
+        switch(role) {
+            case 'GK': return assists * (rules.gk_assist || 0);
+            case 'DEF': return assists * (rules.def_assist || 0);
+            case 'MID': return assists * (rules.mid_assist || 0);
+            case 'ATT': return assists * (rules.for_assist || 0);
+            default: return 0;
+        }
+    }
+    
+    function calculateCleanSheetPoints(role, cleanSheets, rules) {
+        if (!rules) return 0;
+        switch(role) {
+            case 'GK': return cleanSheets * (rules.gk_clean_sheet || 0);
+            case 'DEF': return cleanSheets * (rules.def_clean_sheet || 0);
+            default: return 0;
+        }
     }
     
     function getRoleText(role) {
@@ -1318,6 +1828,101 @@ let currentLeagueTeams = [];
             'ATT': '🔴 Attacker'
         };
         return roles[role] || role;
+    }
+    
+    function openAddPlayerModal() {
+        document.getElementById('addPlayerLeagueId').value = currentLeagueId;
+        document.getElementById('addPlayerName').value = '';
+        document.getElementById('addPlayerRole').value = '';
+        document.getElementById('addPlayerPrice').value = '';
+        
+        // Populate team dropdown
+        populateTeamDropdown('addPlayerTeam');
+        
+        // Show/hide price field based on league system
+        if (currentLeagueSystem === 'Budget') {
+            document.getElementById('addPlayerPriceGroup').style.display = 'block';
+            document.getElementById('addPlayerPriceInfo').style.display = 'block';
+            document.getElementById('addPriceOptional').style.display = 'none';
+            document.getElementById('addPlayerPrice').required = true;
+        } else {
+            document.getElementById('addPlayerPriceGroup').style.display = 'none';
+            document.getElementById('addPlayerPriceInfo').style.display = 'none';
+            document.getElementById('addPlayerPrice').required = false;
+        }
+        
+        document.getElementById('addPlayerModal').classList.add('active');
+    }
+    
+    function closeAddPlayerModal() {
+        document.getElementById('addPlayerModal').classList.remove('active');
+    }
+    
+    function populateTeamDropdown(selectId) {
+        const select = document.getElementById(selectId);
+        select.innerHTML = '<option value="">Select Team</option>';
+        
+        if (!currentLeagueTeams || currentLeagueTeams.length === 0) {
+            select.innerHTML = '<option value="">No teams available</option>';
+            select.disabled = true;
+            return;
+        }
+        
+        select.disabled = false;
+        currentLeagueTeams.forEach(team => {
+            const option = document.createElement('option');
+            option.value = team.id;
+            option.textContent = team.team_name;
+            select.appendChild(option);
+        });
+    }
+    
+    function editPlayer(playerId) {
+        fetch('?ajax=get_player&player_id=' + playerId)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+                
+                document.getElementById('editPlayerId').value = data.player_id;
+                document.getElementById('editPlayerName').value = data.player_name;
+                document.getElementById('editPlayerRole').value = data.player_role;
+                document.getElementById('editPlayerPrice').value = data.player_price || '';
+                
+                // Populate and set team dropdown
+                populateTeamDropdown('editPlayerTeam');
+                document.getElementById('editPlayerTeam').value = data.team_id || '';
+                
+                // Show/hide price info based on league system
+                if (data.league_system === 'Budget') {
+                    document.getElementById('editPlayerPriceInfo').style.display = 'block';
+                    document.getElementById('editPriceOptional').style.display = 'none';
+                    document.getElementById('editPlayerPrice').required = true;
+                } else {
+                    document.getElementById('editPlayerPriceInfo').style.display = 'none';
+                    document.getElementById('editPriceOptional').style.display = 'inline';
+                    document.getElementById('editPlayerPrice').required = false;
+                }
+                
+                document.getElementById('editPlayerModal').classList.add('active');
+            })
+            .catch(error => {
+                console.error(error);
+                alert('Error loading player data');
+            });
+    }
+    
+    function closeEditPlayerModal() {
+        document.getElementById('editPlayerModal').classList.remove('active');
+    }
+    
+    function deletePlayer(playerId, playerName, playerRole) {
+        document.getElementById('deletePlayerId').value = playerId;
+        document.getElementById('deletePlayerName').textContent = playerName;
+        document.getElementById('deletePlayerPosition').textContent = getRoleText(playerRole);
+        document.getElementById('deletePlayerModal').classList.add('active');
     }
     
     function closeDeletePlayerModal() {

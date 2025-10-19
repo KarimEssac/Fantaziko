@@ -1,8 +1,8 @@
 <?php
 session_start();
 require_once 'config/db.php';
+require_once 'includes/auth_check.php';
 
-// Handle AJAX requests
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
     
@@ -68,6 +68,54 @@ if (isset($_GET['ajax'])) {
             $league = $stmt->fetch(PDO::FETCH_ASSOC);
             
             echo json_encode($league);
+        } catch (PDOException $e) {
+            echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
+        }
+        exit();
+    }
+    
+    if ($_GET['ajax'] === 'get_team_players' && isset($_GET['team_id'])) {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT 
+                    lp.*,
+                    lt.team_name,
+                    lt.league_id,
+                    l.system as league_system
+                FROM league_players lp
+                LEFT JOIN league_teams lt ON lp.team_id = lt.id
+                LEFT JOIN leagues l ON lt.league_id = l.id
+                WHERE lp.team_id = ?
+                ORDER BY 
+                    FIELD(lp.player_role, 'GK', 'DEF', 'MID', 'ATT'),
+                    lp.player_name
+            ");
+            $stmt->execute([$_GET['team_id']]);
+            $players = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            echo json_encode($players);
+        } catch (PDOException $e) {
+            echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
+        }
+        exit();
+    }
+    
+    if ($_GET['ajax'] === 'get_team_info' && isset($_GET['team_id'])) {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT 
+                    lt.*,
+                    l.name as league_name,
+                    l.system as league_system,
+                    l.activated as league_activated
+                FROM league_teams lt
+                LEFT JOIN leagues l ON lt.league_id = l.id
+                WHERE lt.id = ?
+            ");
+            $stmt->execute([$_GET['team_id']]);
+            $team = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            echo json_encode($team);
         } catch (PDOException $e) {
             echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
         }
@@ -260,6 +308,15 @@ include 'includes/sidebar.php';
         background: #138496;
     }
     
+    .btn-success {
+        background: #28a745;
+        color: #FFFFFF;
+    }
+    
+    .btn-success:hover {
+        background: #218838;
+    }
+    
     .btn-sm {
         padding: 6px 12px;
         font-size: 12px;
@@ -433,6 +490,26 @@ include 'includes/sidebar.php';
     .badge-info {
         background: #d1ecf1;
         color: #0c5460;
+    }
+    
+    .badge-role-gk {
+        background: #ffc107;
+        color: #856404;
+    }
+    
+    .badge-role-def {
+        background: #28a745;
+        color: #FFFFFF;
+    }
+    
+    .badge-role-mid {
+        background: #17a2b8;
+        color: #FFFFFF;
+    }
+    
+    .badge-role-att {
+        background: #dc3545;
+        color: #FFFFFF;
     }
     
     .tabs {
@@ -651,9 +728,10 @@ include 'includes/sidebar.php';
     <?php endif; ?>
     
     <div class="tabs">
-        <button class="tab active" onclick="switchTab('league-selection')">🏆 Select League</button>
-        <button class="tab tab-disabled" id="teamsTab" disabled>🎯 Teams Management</button>
-    </div>
+    <button class="tab active" onclick="switchTab('league-selection')">🏆 Select League</button>
+    <button class="tab tab-disabled" id="teamsTab" disabled>🎯 Teams Management</button>
+    <button class="tab tab-disabled" id="playersTab" disabled>👥 Team Players</button>
+</div>
     
     <!-- League Selection Tab -->
     <div id="league-selection" class="tab-content active">
@@ -737,7 +815,7 @@ include 'includes/sidebar.php';
             <div class="info-card">
                 <div class="info-card-title">🎯 About Teams Management</div>
                 <div class="info-card-text">
-                    Manage teams within the selected league. You can add new teams, edit team information, and delete teams. Team scores are automatically calculated based on player performance in matches. Note: The current database structure doesn't link players directly to teams - players are managed separately at the league level.
+                    Manage teams within the selected league. You can add new teams, edit team information, view team players, and delete teams. Team scores are automatically calculated based on player performance in matches.
                 </div>
             </div>
             
@@ -754,6 +832,47 @@ include 'includes/sidebar.php';
                     <tbody id="teamsTableBody">
                         <tr>
                             <td colspan="4" style="text-align: center; color: #999; padding: 30px;">Select a league to view teams</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Team Players Tab -->
+    <div id="team-players" class="tab-content">
+        <div class="data-card">
+            <div class="data-card-header">
+                <div class="header-info">
+                    <div class="header-title" id="playersTeamName">Team Players</div>
+                    <div class="header-meta" id="playersTeamMeta"></div>
+                </div>
+                <button class="back-btn" onclick="backToTeamsManagement()">
+                    ← Back to Teams
+                </button>
+            </div>
+            
+            <div class="info-card">
+                <div class="info-card-title">👥 Team Players</div>
+                <div class="info-card-text">
+                    View all players assigned to this team. Player scores are calculated based on their performance in matches throughout the league.
+                </div>
+            </div>
+            
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Player ID</th>
+                            <th>Player Name</th>
+                            <th>Role</th>
+                            <th id="priceHeader" style="display: none;">Price</th>
+                            <th>Total Points</th>
+                        </tr>
+                    </thead>
+                    <tbody id="playersTableBody">
+                        <tr>
+                            <td colspan="5" style="text-align: center; color: #999; padding: 30px;">Select a team to view players</td>
                         </tr>
                     </tbody>
                 </table>
@@ -864,6 +983,7 @@ include 'includes/sidebar.php';
 
 <script>
     let currentLeagueId = null;
+    let currentTeamId = null;
     let currentTab = 'league-selection';
     
     function switchTab(tabName) {
@@ -955,24 +1075,54 @@ include 'includes/sidebar.php';
     }
     
     function backToSelection() {
-        document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-        
-        document.querySelectorAll('.tab')[0].classList.add('active');
-        document.getElementById('league-selection').classList.add('active');
-        
-        // Disable the teams tab
-        const teamsTab = document.getElementById('teamsTab');
-        teamsTab.disabled = true;
-        teamsTab.classList.add('tab-disabled');
-        teamsTab.onclick = null;
-        
-        // Hide add team button
-        document.getElementById('addTeamBtn').style.display = 'none';
-        
-        currentTab = 'league-selection';
-        currentLeagueId = null;
+    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    
+    document.querySelectorAll('.tab')[0].classList.add('active');
+    document.getElementById('league-selection').classList.add('active');
+    
+    // Disable the teams tab
+    const teamsTab = document.getElementById('teamsTab');
+    teamsTab.disabled = true;
+    teamsTab.classList.add('tab-disabled');
+    teamsTab.onclick = null;
+    
+    // Disable the players tab
+    const playersTab = document.getElementById('playersTab');
+    playersTab.disabled = true;
+    playersTab.classList.add('tab-disabled');
+    playersTab.onclick = null;
+    
+    // Hide add team button
+    document.getElementById('addTeamBtn').style.display = 'none';
+    
+    currentTab = 'league-selection';
+    currentLeagueId = null;
+    currentTeamId = null;
+}
+    
+    function backToTeamsManagement() {
+    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    
+    const teamsTab = document.getElementById('teamsTab');
+    teamsTab.classList.add('active');
+    document.getElementById('teams-management').classList.add('active');
+    
+    // Keep the players tab visible but disabled
+    const playersTab = document.getElementById('playersTab');
+    playersTab.disabled = true;
+    playersTab.classList.add('tab-disabled');
+    playersTab.onclick = null;
+    
+    currentTab = 'teams-management';
+    currentTeamId = null;
+    
+    // Reload teams
+    if (currentLeagueId) {
+        loadLeagueTeams(currentLeagueId);
     }
+}
     
     function loadLeagueTeams(leagueId) {
         const tbody = document.getElementById('teamsTableBody');
@@ -1000,6 +1150,9 @@ include 'includes/sidebar.php';
                             <td><strong style="color: #1D60AC; font-size: 18px;">${team.team_score}</strong></td>
                             <td>
                                 <div class="action-buttons">
+                                    <button class="btn btn-success btn-sm" onclick="viewTeamPlayers(${team.id})">
+                                        👥 Players
+                                    </button>
                                     <button class="btn btn-secondary btn-sm" onclick="editTeam(${team.id})">
                                         ✏️ Edit
                                     </button>
@@ -1017,6 +1170,109 @@ include 'includes/sidebar.php';
             .catch(error => {
                 console.error(error);
                 tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #dc3545;">Error loading teams</td></tr>';
+            });
+    }
+    
+    function viewTeamPlayers(teamId) {
+        currentTeamId = teamId;
+        
+        const playersTab = document.getElementById('playersTab');
+        playersTab.disabled = true; 
+        playersTab.classList.add('tab-disabled');
+        fetch('?ajax=get_team_info&team_id=' + teamId)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+                
+                // Update team header
+                updateTeamHeader(data);
+                
+                // Switch to players tab
+                document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+                
+                playersTab.classList.add('active');
+                document.getElementById('team-players').classList.add('active');
+                currentTab = 'team-players';
+                
+                // Show/hide price column based on league system
+                const priceHeader = document.getElementById('priceHeader');
+                if (data.league_system === 'Budget') {
+                    priceHeader.style.display = 'table-cell';
+                } else {
+                    priceHeader.style.display = 'none';
+                }
+                
+                loadTeamPlayers(teamId, data.league_system);
+            })
+            .catch(error => {
+                console.error(error);
+                alert('Error loading team information');
+            });
+    }
+    
+    function updateTeamHeader(team) {
+        const statusBadge = team.league_activated == 1 ? 
+            '<span class="badge badge-success">Active</span>' : 
+            '<span class="badge badge-warning">Inactive</span>';
+        
+        const metaHtml = `
+            <span>League: ${team.league_name}</span>
+            <span>Team Score: ${team.team_score}</span>
+            <span>System: ${team.league_system}</span>
+            <span>Status: ${statusBadge}</span>
+        `;
+        
+        document.getElementById('playersTeamName').textContent = team.team_name;
+        document.getElementById('playersTeamMeta').innerHTML = metaHtml;
+    }
+    
+    function loadTeamPlayers(teamId, leagueSystem) {
+        const tbody = document.getElementById('playersTableBody');
+        const showPrice = leagueSystem === 'Budget';
+        
+        tbody.innerHTML = '<tr><td colspan="' + (showPrice ? '5' : '4') + '" style="text-align: center; padding: 20px; color: #999;">Loading...</td></tr>';
+        
+        fetch('?ajax=get_team_players&team_id=' + teamId)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    tbody.innerHTML = '<tr><td colspan="' + (showPrice ? '5' : '4') + '" style="text-align: center; padding: 20px; color: #dc3545;">Error: ' + data.error + '</td></tr>';
+                    return;
+                }
+                
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="' + (showPrice ? '5' : '4') + '" style="text-align: center; padding: 20px; color: #999;">No players found in this team.</td></tr>';
+                    return;
+                }
+                
+                let html = '';
+                data.forEach(player => {
+                    const roleBadgeClass = 
+                        player.player_role === 'GK' ? 'badge-role-gk' :
+                        player.player_role === 'DEF' ? 'badge-role-def' :
+                        player.player_role === 'MID' ? 'badge-role-mid' :
+                        'badge-role-att';
+                    
+                    html += `
+                        <tr>
+                            <td>${player.player_id}</td>
+                            <td><strong>${player.player_name}</strong></td>
+                            <td><span class="badge ${roleBadgeClass}">${player.player_role}</span></td>
+                            ${showPrice ? `<td><strong style="color: #F1A155;">$${parseFloat(player.player_price).toFixed(2)}</strong></td>` : ''}
+                            <td><strong style="color: #1D60AC; font-size: 16px;">${player.total_points}</strong></td>
+                        </tr>
+                    `;
+                });
+                
+                tbody.innerHTML = html;
+            })
+            .catch(error => {
+                console.error(error);
+                tbody.innerHTML = '<tr><td colspan="' + (showPrice ? '5' : '4') + '" style="text-align: center; padding: 20px; color: #dc3545;">Error loading players</td></tr>';
             });
     }
     

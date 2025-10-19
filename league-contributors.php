@@ -1,8 +1,7 @@
 <?php
 session_start();
 require_once 'config/db.php';
-
-// Handle AJAX requests for getting contributor data
+require_once 'includes/auth_check.php';
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
     
@@ -99,6 +98,114 @@ if (isset($_GET['ajax'])) {
         }
         exit();
     }
+if ($_GET['ajax'] === 'get_contributor_team' && isset($_GET['user_id']) && isset($_GET['league_id'])) {
+    try {
+        $stmt = $pdo->prepare("
+            SELECT 
+                lc.*,
+                a.username
+            FROM league_contributors lc
+            JOIN accounts a ON lc.user_id = a.id
+            WHERE lc.user_id = ? AND lc.league_id = ?
+        ");
+        $stmt->execute([$_GET['user_id'], $_GET['league_id']]);
+        $contributor = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$contributor) {
+            echo json_encode(['error' => 'Contributor not found']);
+            exit();
+        }
+        
+        $starting_xi = [];
+        $substitutes = [];
+        
+        // Define positions
+        $positions = [
+            'goalkeeper' => 'Goalkeeper',
+            'defender1' => 'Defender 1',
+            'defender2' => 'Defender 2',
+            'defender3' => 'Defender 3',
+            'defender4' => 'Defender 4',
+            'defender5' => 'Defender 5',
+            'midfielder1' => 'Midfielder 1',
+            'midfielder2' => 'Midfielder 2',
+            'midfielder3' => 'Midfielder 3',
+            'midfielder4' => 'Midfielder 4',
+            'midfielder5' => 'Midfielder 5',
+            'forward1' => 'Forward 1',
+            'forward2' => 'Forward 2',
+            'forward3' => 'Forward 3'
+        ];
+        
+        $sub_positions = [
+            'sub_goalkeeper' => 'Sub GK',
+            'sub_defender1' => 'Sub Defender 1',
+            'sub_defender2' => 'Sub Defender 2',
+            'sub_midfielder1' => 'Sub Midfielder 1',
+            'sub_midfielder2' => 'Sub Midfielder 2',
+            'sub_forward1' => 'Sub Forward 1',
+            'sub_forward2' => 'Sub Forward 2'
+        ];
+        
+        // Fetch starting XI
+        foreach ($positions as $field => $label) {
+            if ($contributor[$field]) {
+                $stmt = $pdo->prepare("
+                    SELECT 
+                        lp.player_name,
+                        lp.player_role,
+                        lp.player_price,
+                        lp.total_points,
+                        lt.team_name
+                    FROM league_players lp
+                    LEFT JOIN league_teams lt ON lp.team_id = lt.id
+                    WHERE lp.player_id = ?
+                ");
+                $stmt->execute([$contributor[$field]]);
+                $player = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($player) {
+                    $player['position'] = $field;
+                    $player['position_label'] = $label;
+                    $starting_xi[] = $player;
+                }
+            }
+        }
+        
+        // Fetch substitutes
+        foreach ($sub_positions as $field => $label) {
+            if ($contributor[$field]) {
+                $stmt = $pdo->prepare("
+                    SELECT 
+                        lp.player_name,
+                        lp.player_role,
+                        lp.player_price,
+                        lp.total_points,
+                        lt.team_name
+                    FROM league_players lp
+                    LEFT JOIN league_teams lt ON lp.team_id = lt.id
+                    WHERE lp.player_id = ?
+                ");
+                $stmt->execute([$contributor[$field]]);
+                $player = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($player) {
+                    $player['position'] = $field;
+                    $player['position_label'] = $label;
+                    $substitutes[] = $player;
+                }
+            }
+        }
+        
+        echo json_encode([
+            'starting_xi' => $starting_xi,
+            'substitutes' => $substitutes
+        ]);
+    } catch (PDOException $e) {
+        echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
+    }
+    exit();
+}
 }
 
 // Handle CRUD operations
@@ -300,14 +407,16 @@ include 'includes/sidebar.php';
         background: #c82333;
     }
     
-    .btn-info {
-        background: #17a2b8;
-        color: #FFFFFF;
-    }
-    
-    .btn-info:hover {
-        background: #138496;
-    }
+.btn-info {
+    background: #17a2b8;
+    color: #FFFFFF;
+}
+
+.btn-info:hover {
+    background: #138496;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(23, 162, 184, 0.3);
+}
     
     .btn-sm {
         padding: 6px 12px;
@@ -440,12 +549,13 @@ include 'includes/sidebar.php';
         letter-spacing: 0.5px;
     }
     
-    .data-table td {
-        padding: 15px;
-        border-bottom: 1px solid #e9ecef;
-        color: #666;
-        font-size: 14px;
-    }
+.data-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #e9ecef;
+    color: #666;
+    font-size: 14px;
+    vertical-align: middle;
+}
     
     .data-table tbody tr:hover {
         background: #f8f9fa;
@@ -493,10 +603,18 @@ include 'includes/sidebar.php';
         color: #F1A155;
     }
     
-    .action-buttons {
-        display: flex;
-        gap: 8px;
-    }
+.action-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.action-buttons .btn {
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
     
     .rank-badge {
         display: inline-flex;
@@ -815,42 +933,63 @@ include 'includes/sidebar.php';
                         </tr>
                     </thead>
                     <tbody>
-                        <?php if (!empty($contributors)): ?>
-                            <?php foreach ($contributors as $contributor): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($contributor['user_id']); ?></td>
-                                    <td><?php echo htmlspecialchars($contributor['username']); ?></td>
-                                    <td><?php echo htmlspecialchars($contributor['email']); ?></td>
-                                    <td><?php echo htmlspecialchars($contributor['league_name']); ?></td>
-                                    <td>
-                                        <?php if ($contributor['role'] == 'Admin'): ?>
-                                            <span class="badge badge-primary">Admin</span>
-                                        <?php else: ?>
-                                            <span class="badge badge-secondary">Contributor</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><strong><?php echo number_format($contributor['total_score']); ?></strong></td>
-                                    <td>
-                                        <?php if ($contributor['league_activated']): ?>
-                                            <span class="badge badge-success">Active</span>
-                                        <?php else: ?>
-                                            <span class="badge badge-warning">Inactive</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <div class="action-buttons">
-                                            <button class="btn btn-secondary btn-sm" onclick="editContributor(<?php echo $contributor['user_id']; ?>, <?php echo $contributor['league_id']; ?>)">✏️ Edit</button>
-                                            <button class="btn btn-danger btn-sm" onclick="deleteContributor(<?php echo $contributor['user_id']; ?>, <?php echo $contributor['league_id']; ?>, '<?php echo htmlspecialchars($contributor['username']); ?>', '<?php echo htmlspecialchars($contributor['league_name']); ?>')">🗑️ Remove</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <tr>
-                                <td colspan="8" style="text-align: center; color: #999; padding: 30px;">No contributors found</td>
-                            </tr>
-                        <?php endif; ?>
-                    </tbody>
+    <?php if (!empty($contributors)): ?>
+        <?php foreach ($contributors as $contributor): ?>
+            <tr>
+                <td><?php echo htmlspecialchars($contributor['user_id']); ?></td>
+                <td><?php echo htmlspecialchars($contributor['username']); ?></td>
+                <td><?php echo htmlspecialchars($contributor['email']); ?></td>
+                <td><?php echo htmlspecialchars($contributor['league_name']); ?></td>
+                <td>
+                    <?php if ($contributor['role'] == 'Admin'): ?>
+                        <span class="badge badge-primary">Admin</span>
+                    <?php else: ?>
+                        <span class="badge badge-secondary">Contributor</span>
+                    <?php endif; ?>
+                </td>
+                <td><strong><?php echo number_format($contributor['total_score']); ?></strong></td>
+                <td>
+                    <?php if ($contributor['league_activated']): ?>
+                        <span class="badge badge-success">Active</span>
+                    <?php else: ?>
+                        <span class="badge badge-warning">Inactive</span>
+                    <?php endif; ?>
+                </td>
+                <td>
+                    <div class="action-buttons">
+                        <button class="btn btn-info btn-sm" onclick="viewTeam(<?php echo $contributor['user_id']; ?>, <?php echo $contributor['league_id']; ?>, '<?php echo htmlspecialchars($contributor['username']); ?>')">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="9" cy="7" r="4"></circle>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                            </svg>
+                            View Team
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="editContributor(<?php echo $contributor['user_id']; ?>, <?php echo $contributor['league_id']; ?>)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                            </svg>
+                            Edit
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteContributor(<?php echo $contributor['user_id']; ?>, <?php echo $contributor['league_id']; ?>, '<?php echo htmlspecialchars($contributor['username']); ?>', '<?php echo htmlspecialchars($contributor['league_name']); ?>')">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                            Remove
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        <?php endforeach; ?>
+    <?php else: ?>
+        <tr>
+            <td colspan="8" style="text-align: center; color: #999; padding: 30px;">No contributors found</td>
+        </tr>
+    <?php endif; ?>
+</tbody>
                 </table>
             </div>
         </div>
@@ -1032,6 +1171,67 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
+<!-- View Team Modal -->
+<div id="viewTeamModal" class="modal">
+    <div class="modal-content" style="max-width: 900px;">
+        <div class="modal-header">
+            <span id="teamModalTitle">Team Details</span>
+            <button class="modal-close" onclick="closeViewTeamModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="teamLoadingMessage" style="text-align: center; padding: 30px; color: #999;">Loading team details...</div>
+            <div id="teamContent" style="display: none;">
+                <div style="margin-bottom: 20px;">
+                    <h3 style="color: #1D60AC; margin-bottom: 10px;">Starting XI</h3>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Position</th>
+                                    <th>Player Name</th>
+                                    <th>Team</th>
+                                    <th>Role</th>
+                                    <th>Price</th>
+                                    <th>Points</th>
+                                </tr>
+                            </thead>
+                            <tbody id="startingXITable">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div>
+                    <h3 style="color: #F1A155; margin-bottom: 10px;">Substitutes</h3>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Position</th>
+                                    <th>Player Name</th>
+                                    <th>Team</th>
+                                    <th>Role</th>
+                                    <th>Price</th>
+                                    <th>Points</th>
+                                </tr>
+                            </thead>
+                            <tbody id="substitutesTable">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div id="emptyTeamMessage" style="display: none; text-align: center; padding: 30px; color: #999;">
+                    This contributor hasn't selected their team yet.
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" onclick="closeViewTeamModal()">Close</button>
+        </div>
+    </div>
+</div>
+
 <script>
     function switchTab(tabName) {
         const tabs = document.querySelectorAll('.tab');
@@ -1064,7 +1264,96 @@ include 'includes/sidebar.php';
         url += params.join('&');
         window.location.href = url;
     }
+    // Add this JavaScript function with the other functions
+function viewTeam(userId, leagueId, username) {
+    document.getElementById('teamModalTitle').textContent = username + "'s Team";
+    document.getElementById('viewTeamModal').classList.add('active');
+    document.getElementById('teamLoadingMessage').style.display = 'block';
+    document.getElementById('teamContent').style.display = 'none';
     
+    fetch('?ajax=get_contributor_team&user_id=' + userId + '&league_id=' + leagueId)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Error: ' + data.error);
+                closeViewTeamModal();
+                return;
+            }
+            
+            document.getElementById('teamLoadingMessage').style.display = 'none';
+            document.getElementById('teamContent').style.display = 'block';
+            
+            const startingXI = data.starting_xi || [];
+            const substitutes = data.substitutes || [];
+            
+            if (startingXI.length === 0 && substitutes.length === 0) {
+                document.getElementById('emptyTeamMessage').style.display = 'block';
+                return;
+            }
+            
+            // Populate Starting XI
+            let startingHTML = '';
+            const positions = [
+                { label: 'Goalkeeper', players: startingXI.filter(p => p.position === 'goalkeeper') },
+                { label: 'Defenders', players: startingXI.filter(p => p.position.startsWith('defender')) },
+                { label: 'Midfielders', players: startingXI.filter(p => p.position.startsWith('midfielder')) },
+                { label: 'Forwards', players: startingXI.filter(p => p.position.startsWith('forward')) }
+            ];
+            
+            positions.forEach(pos => {
+                pos.players.forEach(player => {
+                    const roleClass = player.player_role === 'GK' ? 'badge-success' : 
+                                    player.player_role === 'DEF' ? 'badge-primary' :
+                                    player.player_role === 'MID' ? 'badge-info' : 'badge-danger';
+                    
+                    startingHTML += `
+                        <tr>
+                            <td><strong>${player.position_label}</strong></td>
+                            <td>${player.player_name || '<em style="color: #999;">Not Selected</em>'}</td>
+                            <td>${player.team_name || '-'}</td>
+                            <td><span class="badge ${roleClass}">${player.player_role || '-'}</span></td>
+                            <td>${player.player_price ? '$' + Number(player.player_price).toFixed(2) : '-'}</td>
+                            <td><strong>${player.total_points || 0}</strong></td>
+                        </tr>
+                    `;
+                });
+            });
+            
+            document.getElementById('startingXITable').innerHTML = startingHTML || 
+                '<tr><td colspan="6" style="text-align: center; color: #999;">No players selected</td></tr>';
+            
+            // Populate Substitutes
+            let subsHTML = '';
+            substitutes.forEach(player => {
+                const roleClass = player.player_role === 'GK' ? 'badge-success' : 
+                                player.player_role === 'DEF' ? 'badge-primary' :
+                                player.player_role === 'MID' ? 'badge-info' : 'badge-danger';
+                
+                subsHTML += `
+                    <tr>
+                        <td><strong>${player.position_label}</strong></td>
+                        <td>${player.player_name || '<em style="color: #999;">Not Selected</em>'}</td>
+                        <td>${player.team_name || '-'}</td>
+                        <td><span class="badge ${roleClass}">${player.player_role || '-'}</span></td>
+                        <td>${player.player_price ? '$' + Number(player.player_price).toFixed(2) : '-'}</td>
+                        <td><strong>${player.total_points || 0}</strong></td>
+                    </tr>
+                `;
+            });
+            
+            document.getElementById('substitutesTable').innerHTML = subsHTML || 
+                '<tr><td colspan="6" style="text-align: center; color: #999;">No substitutes selected</td></tr>';
+        })
+        .catch(error => {
+            console.error(error);
+            alert('Error loading team data');
+            closeViewTeamModal();
+        });
+}
+
+function closeViewTeamModal() {
+    document.getElementById('viewTeamModal').classList.remove('active');
+}
     function searchLeagues() {
         const search = document.getElementById('standingsSearch').value;
         let url = window.location.pathname + '?';
@@ -1288,17 +1577,22 @@ include 'includes/sidebar.php';
     }
     
     // Close modal when clicking outside
-    window.onclick = function(event) {
-        const contributorModal = document.getElementById('contributorModal');
-        const deleteModal = document.getElementById('deleteModal');
-        
-        if (event.target === contributorModal) {
-            closeModal();
-        }
-        if (event.target === deleteModal) {
-            closeDeleteModal();
-        }
+    // Update the existing window.onclick function
+window.onclick = function(event) {
+    const contributorModal = document.getElementById('contributorModal');
+    const deleteModal = document.getElementById('deleteModal');
+    const viewTeamModal = document.getElementById('viewTeamModal');
+    
+    if (event.target === contributorModal) {
+        closeModal();
     }
+    if (event.target === deleteModal) {
+        closeDeleteModal();
+    }
+    if (event.target === viewTeamModal) {
+        closeViewTeamModal();
+    }
+}
 </script>
 
 <?php include 'includes/footer.php'; ?>

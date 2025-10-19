@@ -1,3 +1,7 @@
+<?php
+// includes/sidebar.php
+?>
+
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
     
@@ -251,7 +255,8 @@
         
         <div class="menu-section">
             <div class="menu-section-title">System</div>
-            <a href="logout.php" class="menu-item">
+
+            <a href="logout.php" class="menu-item" onclick="return confirm('Are you sure you want to logout?');">
                 <span class="menu-icon">🚪</span>
                 <span class="menu-text">Logout</span>
             </a>

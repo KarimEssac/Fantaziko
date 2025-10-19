@@ -1,3 +1,27 @@
+<?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+require_once 'config/db.php';
+
+$admin_username = 'Admin User'; 
+$initials = 'AD';
+
+if (isset($_SESSION['admin_id'])) {
+    try {
+        $stmt = $pdo->prepare("SELECT username FROM admins WHERE id = ?");
+        $stmt->execute([$_SESSION['admin_id']]);
+        $admin = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($admin) {
+            $admin_username = $admin['username'];
+            $initials = strtoupper(substr($admin_username, 0, 2));
+        }
+    } catch (PDOException $e) {
+
+    }
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -207,12 +231,12 @@
     <div class="header-right">
         
         <div class="header-profile">
-            <div class="header-profile-avatar">AD</div>
-            <div class="header-profile-info">
-                <span class="header-profile-name">Admin User</span>
-                <span class="header-profile-role">Administrator</span>
-            </div>
-        </div>
+    <div class="header-profile-avatar"><?php echo htmlspecialchars($initials); ?></div>
+    <div class="header-profile-info">
+        <span class="header-profile-name"><?php echo htmlspecialchars($admin_username); ?></span>
+        <span class="header-profile-role">Administrator</span>
+    </div>
+</div>
     </div>
     
 </header>

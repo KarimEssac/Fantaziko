@@ -1,14 +1,7 @@
 <?php
 session_start();
 require_once 'config/db.php';
-
-// Check if admin is logged in
-// if (!isset($_SESSION['admin_id'])) {
-//     header('Location: login.php');
-//     exit();
-// }
-
-// Fetch dashboard statistics
+require_once 'includes/auth_check.php';
 $stats = [
     'total_accounts' => 0,
     'total_leagues' => 0,

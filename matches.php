@@ -1,8 +1,7 @@
 <?php
 session_start();
 require_once 'config/db.php';
-
-// Handle AJAX requests
+require_once 'includes/auth_check.php';
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
     
@@ -107,19 +106,20 @@ if (isset($_GET['ajax'])) {
 // Function to update team scores based on match result
 function updateTeamScores($pdo, $match_id, $team1_id, $team2_id, $team1_score, $team2_score, $old_team1_id = null, $old_team2_id = null, $old_team1_score = null, $old_team2_score = null) {
     try {
-        // If editing, first revert the old scores
+        // If editing, first revert the old scores and clean sheet bonuses
         if ($old_team1_id && $old_team2_id && $old_team1_score !== null && $old_team2_score !== null) {
+            // Revert match points
             if ($old_team1_score > $old_team2_score) {
-                // Team 1 won - revert +3 from team1
                 $pdo->prepare("UPDATE league_teams SET team_score = team_score - 3 WHERE id = ?")->execute([$old_team1_id]);
             } elseif ($old_team2_score > $old_team1_score) {
-                // Team 2 won - revert +3 from team2
                 $pdo->prepare("UPDATE league_teams SET team_score = team_score - 3 WHERE id = ?")->execute([$old_team2_id]);
             } else {
-                // Draw - revert +1 from both
                 $pdo->prepare("UPDATE league_teams SET team_score = team_score - 1 WHERE id = ?")->execute([$old_team1_id]);
                 $pdo->prepare("UPDATE league_teams SET team_score = team_score - 1 WHERE id = ?")->execute([$old_team2_id]);
             }
+            
+            // Revert clean sheet bonuses for goalkeepers and defenders
+            revertCleanSheetBonuses($pdo, $match_id, $old_team1_id, $old_team2_id, $old_team1_score, $old_team2_score);
         }
         
         // Apply new scores
@@ -135,9 +135,111 @@ function updateTeamScores($pdo, $match_id, $team1_id, $team2_id, $team1_score, $
             $pdo->prepare("UPDATE league_teams SET team_score = team_score + 1 WHERE id = ?")->execute([$team2_id]);
         }
         
+        // Apply clean sheet bonuses for goalkeepers and defenders
+        applyCleanSheetBonuses($pdo, $match_id, $team1_id, $team2_id, $team1_score, $team2_score);
+        
         return true;
     } catch (PDOException $e) {
         return false;
+    }
+}
+
+// Function to apply clean sheet bonuses
+function applyCleanSheetBonuses($pdo, $match_id, $team1_id, $team2_id, $team1_score, $team2_score) {
+    // Get league_id from match
+    $stmt = $pdo->prepare("SELECT league_id FROM matches WHERE match_id = ?");
+    $stmt->execute([$match_id]);
+    $league_id = $stmt->fetchColumn();
+    
+    if (!$league_id) return;
+    
+    // Get clean sheet bonuses from league_roles
+    $stmt = $pdo->prepare("SELECT gk_clean_sheet, def_clean_sheet FROM league_roles WHERE league_id = ?");
+    $stmt->execute([$league_id]);
+    $bonuses = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$bonuses) return;
+    
+    $gk_bonus = $bonuses['gk_clean_sheet'];
+    $def_bonus = $bonuses['def_clean_sheet'];
+    
+    // Team 1 clean sheet (team2_score = 0)
+    if ($team2_score == 0) {
+        // Get all GK and DEF players from team1
+        $stmt = $pdo->prepare("SELECT player_id, player_role FROM league_players WHERE team_id = ? AND player_role IN ('GK', 'DEF')");
+        $stmt->execute([$team1_id]);
+        $players = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($players as $player) {
+            $bonus = ($player['player_role'] == 'GK') ? $gk_bonus : $def_bonus;
+            if ($bonus > 0) {
+                // Add to player's total_points
+                $pdo->prepare("UPDATE league_players SET total_points = total_points + ? WHERE player_id = ?")->execute([$bonus, $player['player_id']]);
+            }
+        }
+    }
+    
+    // Team 2 clean sheet (team1_score = 0)
+    if ($team1_score == 0) {
+        // Get all GK and DEF players from team2
+        $stmt = $pdo->prepare("SELECT player_id, player_role FROM league_players WHERE team_id = ? AND player_role IN ('GK', 'DEF')");
+        $stmt->execute([$team2_id]);
+        $players = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($players as $player) {
+            $bonus = ($player['player_role'] == 'GK') ? $gk_bonus : $def_bonus;
+            if ($bonus > 0) {
+                // Add to player's total_points
+                $pdo->prepare("UPDATE league_players SET total_points = total_points + ? WHERE player_id = ?")->execute([$bonus, $player['player_id']]);
+            }
+        }
+    }
+}
+// Function to revert clean sheet bonuses when editing/deleting matches
+function revertCleanSheetBonuses($pdo, $match_id, $team1_id, $team2_id, $team1_score, $team2_score) {
+    // Get league_id from match
+    $stmt = $pdo->prepare("SELECT league_id FROM matches WHERE match_id = ?");
+    $stmt->execute([$match_id]);
+    $league_id = $stmt->fetchColumn();
+    
+    if (!$league_id) return;
+    
+    // Get clean sheet bonuses from league_roles
+    $stmt = $pdo->prepare("SELECT gk_clean_sheet, def_clean_sheet FROM league_roles WHERE league_id = ?");
+    $stmt->execute([$league_id]);
+    $bonuses = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$bonuses) return;
+    
+    $gk_bonus = $bonuses['gk_clean_sheet'];
+    $def_bonus = $bonuses['def_clean_sheet'];
+    
+    // Revert Team 1 clean sheet (if team2_score was 0)
+    if ($team2_score == 0) {
+        $stmt = $pdo->prepare("SELECT player_id, player_role FROM league_players WHERE team_id = ? AND player_role IN ('GK', 'DEF')");
+        $stmt->execute([$team1_id]);
+        $players = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($players as $player) {
+            $bonus = ($player['player_role'] == 'GK') ? $gk_bonus : $def_bonus;
+            if ($bonus > 0) {
+                $pdo->prepare("UPDATE league_players SET total_points = total_points - ? WHERE player_id = ?")->execute([$bonus, $player['player_id']]);
+            }
+        }
+    }
+    
+    // Revert Team 2 clean sheet (if team1_score was 0)
+    if ($team1_score == 0) {
+        $stmt = $pdo->prepare("SELECT player_id, player_role FROM league_players WHERE team_id = ? AND player_role IN ('GK', 'DEF')");
+        $stmt->execute([$team2_id]);
+        $players = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($players as $player) {
+            $bonus = ($player['player_role'] == 'GK') ? $gk_bonus : $def_bonus;
+            if ($bonus > 0) {
+                $pdo->prepare("UPDATE league_players SET total_points = total_points - ? WHERE player_id = ?")->execute([$bonus, $player['player_id']]);
+            }
+        }
     }
 }
 

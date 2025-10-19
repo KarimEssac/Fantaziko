@@ -1,8 +1,8 @@
 <?php
 session_start();
 require_once 'config/db.php';
+require_once 'includes/auth_check.php';
 
-// Handle AJAX requests
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
     
@@ -23,6 +23,11 @@ if (isset($_GET['ajax'])) {
             ");
             $stmt->execute([$league_id]);
             $league = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$league) {
+                echo json_encode(['error' => 'League not found']);
+                exit();
+            }
             
             // Get contributors with scores
             $stmt = $pdo->prepare("
@@ -77,7 +82,8 @@ if (isset($_GET['ajax'])) {
                 LEFT JOIN matches_points mp ON lp.player_id = mp.scorer
                 LEFT JOIN matches m ON mp.match_id = m.match_id
                 WHERE lp.league_id = ? AND m.league_id = ?
-                GROUP BY lp.player_id
+                GROUP BY lp.player_id, lp.player_name, lp.player_role, lt.team_name
+                HAVING goals > 0
                 ORDER BY goals DESC
                 LIMIT 10
             ");
@@ -96,12 +102,37 @@ if (isset($_GET['ajax'])) {
                 LEFT JOIN matches_points mp ON lp.player_id = mp.assister
                 LEFT JOIN matches m ON mp.match_id = m.match_id
                 WHERE lp.league_id = ? AND m.league_id = ?
-                GROUP BY lp.player_id
+                GROUP BY lp.player_id, lp.player_name, lp.player_role, lt.team_name
+                HAVING assists > 0
                 ORDER BY assists DESC
                 LIMIT 10
             ");
             $stmt->execute([$league_id, $league_id]);
             $top_assisters = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Get top players by total points
+            $stmt = $pdo->prepare("
+                SELECT 
+                    lp.player_name,
+                    lp.player_role,
+                    lp.total_points,
+                    lt.team_name
+                FROM league_players lp
+                LEFT JOIN league_teams lt ON lp.team_id = lt.id
+                WHERE lp.league_id = ?
+                ORDER BY lp.total_points DESC
+                LIMIT 10
+            ");
+            $stmt->execute([$league_id]);
+            $top_players = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Get league roles configuration
+            $stmt = $pdo->prepare("
+                SELECT * FROM league_roles
+                WHERE league_id = ?
+            ");
+            $stmt->execute([$league_id]);
+            $league_roles = $stmt->fetch(PDO::FETCH_ASSOC);
             
             echo json_encode([
                 'league' => $league,
@@ -110,7 +141,9 @@ if (isset($_GET['ajax'])) {
                 'match_stats' => $match_stats,
                 'player_stats' => $player_stats,
                 'top_scorers' => $top_scorers,
-                'top_assisters' => $top_assisters
+                'top_assisters' => $top_assisters,
+                'top_players' => $top_players,
+                'league_roles' => $league_roles
             ]);
         } catch (PDOException $e) {
             echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
@@ -607,6 +640,12 @@ include 'includes/sidebar.php';
         gap: 20px;
     }
     
+    .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+    }
+    
     .ranking-item {
         display: flex;
         align-items: center;
@@ -634,6 +673,7 @@ include 'includes/sidebar.php';
         font-weight: 700;
         font-size: 14px;
         margin-right: 15px;
+        flex-shrink: 0;
     }
     
     .ranking-position.gold {
@@ -668,6 +708,7 @@ include 'includes/sidebar.php';
         font-size: 18px;
         font-weight: 700;
         color: #1D60AC;
+        flex-shrink: 0;
     }
     
     .export-buttons {
@@ -681,6 +722,33 @@ include 'includes/sidebar.php';
         padding: 40px;
         color: #999;
         font-size: 14px;
+    }
+    
+    .roles-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 15px;
+    }
+    
+    .role-config-item {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 3px solid #1D60AC;
+    }
+    
+    .role-config-title {
+        font-size: 12px;
+        color: #666;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 5px;
+    }
+    
+    .role-config-value {
+        font-size: 18px;
+        font-weight: 700;
+        color: #1D60AC;
     }
     
     @media (max-width: 768px) {
@@ -711,7 +779,7 @@ include 'includes/sidebar.php';
             grid-template-columns: 1fr;
         }
         
-        .grid-2 {
+        .grid-2, .grid-3 {
             grid-template-columns: 1fr;
         }
     }
@@ -761,7 +829,7 @@ include 'includes/sidebar.php';
             <div class="stat-card">
                 <div class="stat-card-header">
                     <span class="stat-card-title">Active Leagues</span>
-                    <div class="stat-card-icon">✓</div>
+                    <div class="stat-card-icon">✔</div>
                 </div>
                 <div class="stat-card-value">-</div>
             </div>
@@ -901,9 +969,10 @@ include 'includes/sidebar.php';
 </div>
 
 <script>
-    let currentLeagueId = null;
+let currentLeagueId = null;
 let currentTab = 'overall-stats';
 let currentReportData = null;
+
 // Load overall stats on page load
 document.addEventListener('DOMContentLoaded', function() {
     loadOverallStats();
@@ -1065,7 +1134,7 @@ function displayLeagueReport(data) {
         <span>${ownerText}</span>
         <span>Round: ${league.round}</span>
         <span>System: ${league.system}</span>
-        <span>Price: $${parseFloat(league.price).toFixed(2)}</span>
+        <span>Price: ${parseFloat(league.price).toFixed(2)}</span>
         <span>Status: ${statusBadge}</span>
     `;
     
@@ -1125,7 +1194,7 @@ function displayLeagueReport(data) {
                         <span class="stat-card-title">League Price</span>
                         <div class="stat-card-icon">💰</div>
                     </div>
-                    <div class="stat-card-value">$${parseFloat(league.price).toFixed(2)}</div>
+                    <div class="stat-card-value">${parseFloat(league.price).toFixed(2)}</div>
                 </div>
             </div>
         </div>
@@ -1239,8 +1308,41 @@ function displayLeagueReport(data) {
     html += `
         <div class="report-section">
             <div class="report-section-title">⭐ Top Performers</div>
-            <div class="grid-2">
+            <div class="grid-3">
     `;
+    
+    // Top Players by Points
+    html += `
+        <div class="data-card">
+            <div class="data-card-header">
+                <span>🌟 Top Players</span>
+            </div>
+            <div style="padding: 20px;">
+    `;
+    
+    if (data.top_players.length === 0) {
+        html += '<div class="no-data-message">No player data available</div>';
+    } else {
+        data.top_players.forEach((player, index) => {
+            let positionClass = '';
+            if (index === 0) positionClass = 'gold';
+            else if (index === 1) positionClass = 'silver';
+            else if (index === 2) positionClass = 'bronze';
+            
+            html += `
+                <div class="ranking-item">
+                    <div class="ranking-position ${positionClass}">${index + 1}</div>
+                    <div class="ranking-info">
+                        <div class="ranking-name">${player.player_name}</div>
+                        <div class="ranking-meta">${player.team_name || 'No Team'} • ${player.player_role}</div>
+                    </div>
+                    <div class="ranking-value">${player.total_points} <small style="font-size: 12px; color: #999;">pts</small></div>
+                </div>
+            `;
+        });
+    }
+    
+    html += '</div></div>';
     
     // Top Scorers
     html += `
@@ -1338,7 +1440,7 @@ function displayLeagueReport(data) {
                         
                         <div class="info-card" style="margin: 0;">
                             <div class="info-card-title">League Price</div>
-                            <div class="info-card-text"><strong>$${parseFloat(league.price).toFixed(2)}</strong></div>
+                            <div class="info-card-text"><strong>${parseFloat(league.price).toFixed(2)}</strong></div>
                         </div>
                         
                         <div class="info-card" style="margin: 0;">
@@ -1350,6 +1452,77 @@ function displayLeagueReport(data) {
             </div>
         </div>
     `;
+    
+    // League Roles Points Configuration
+    if (data.league_roles) {
+        html += `
+            <div class="report-section">
+                <div class="report-section-title">🎮 Scoring System Configuration</div>
+                <div class="data-card">
+                    <div style="padding: 25px;">
+                        <div class="roles-grid">
+                            <div class="role-config-item">
+                                <div class="role-config-title">GK Save Penalty</div>
+                                <div class="role-config-value">${data.league_roles.gk_save_penalty} pts</div>
+                            </div>
+                            <div class="role-config-item">
+                                <div class="role-config-title">GK Score</div>
+                                <div class="role-config-value">${data.league_roles.gk_score} pts</div>
+                            </div>
+                            <div class="role-config-item">
+                                <div class="role-config-title">GK Assist</div>
+                                <div class="role-config-value">${data.league_roles.gk_assist} pts</div>
+                            </div>
+                            <div class="role-config-item">
+                                <div class="role-config-title">GK Clean Sheet</div>
+                                <div class="role-config-value">${data.league_roles.gk_clean_sheet} pts</div>
+                            </div>
+                            <div class="role-config-item">
+                                <div class="role-config-title">DEF Clean Sheet</div>
+                                <div class="role-config-value">${data.league_roles.def_clean_sheet} pts</div>
+                            </div>
+                            <div class="role-config-item">
+                                <div class="role-config-title">DEF Assist</div>
+                                <div class="role-config-value">${data.league_roles.def_assist} pts</div>
+                            </div>
+                            <div class="role-config-item">
+                                <div class="role-config-title">DEF Score</div>
+                                <div class="role-config-value">${data.league_roles.def_score} pts</div>
+                            </div>
+                            <div class="role-config-item">
+                                <div class="role-config-title">MID Assist</div>
+                                <div class="role-config-value">${data.league_roles.mid_assist} pts</div>
+                            </div>
+                            <div class="role-config-item">
+                                <div class="role-config-title">MID Score</div>
+                                <div class="role-config-value">${data.league_roles.mid_score} pts</div>
+                            </div>
+                            <div class="role-config-item">
+                                <div class="role-config-title">FOR Score</div>
+                                <div class="role-config-value">${data.league_roles.for_score} pts</div>
+                            </div>
+                            <div class="role-config-item">
+                                <div class="role-config-title">FOR Assist</div>
+                                <div class="role-config-value">${data.league_roles.for_assist} pts</div>
+                            </div>
+                            <div class="role-config-item">
+                                <div class="role-config-title">Miss Penalty</div>
+                                <div class="role-config-value">${data.league_roles.miss_penalty} pts</div>
+                            </div>
+                            <div class="role-config-item">
+                                <div class="role-config-title">Yellow Card</div>
+                                <div class="role-config-value">${data.league_roles.yellow_card} pts</div>
+                            </div>
+                            <div class="role-config-item">
+                                <div class="role-config-title">Red Card</div>
+                                <div class="role-config-value">${data.league_roles.red_card} pts</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
     
     document.getElementById('leagueReportContent').innerHTML = html;
 }
@@ -1392,7 +1565,7 @@ function exportLeagueReport() {
     reportText += `\n`;
     reportText += `System: ${league.system}\n`;
     reportText += `Round: ${league.round}\n`;
-    reportText += `Price: $${parseFloat(league.price).toFixed(2)}\n`;
+    reportText += `Price: ${parseFloat(league.price).toFixed(2)}\n`;
     reportText += `Status: ${league.activated == 1 ? 'Active' : 'Inactive'}\n`;
     reportText += `Created: ${new Date(league.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}\n\n`;
     
@@ -1425,6 +1598,17 @@ function exportLeagueReport() {
     }
     reportText += `\n`;
     
+    reportText += `TOP PLAYERS BY POINTS\n`;
+    reportText += `${'-'.repeat(50)}\n`;
+    if (currentReportData.top_players.length > 0) {
+        currentReportData.top_players.forEach((player, index) => {
+            reportText += `${index + 1}. ${player.player_name} (${player.team_name || 'No Team'}) - ${player.total_points} points\n`;
+        });
+    } else {
+        reportText += `No player data\n`;
+    }
+    reportText += `\n`;
+    
     reportText += `TOP SCORERS\n`;
     reportText += `${'-'.repeat(50)}\n`;
     if (currentReportData.top_scorers.length > 0) {
@@ -1454,6 +1638,25 @@ function exportLeagueReport() {
     reportText += `Bench Boost: ${league.bench_boost}\n`;
     reportText += `Wild Card: ${league.wild_card}\n\n`;
     
+    if (currentReportData.league_roles) {
+        reportText += `SCORING SYSTEM CONFIGURATION\n`;
+        reportText += `${'-'.repeat(50)}\n`;
+        reportText += `GK Save Penalty: ${currentReportData.league_roles.gk_save_penalty} pts\n`;
+        reportText += `GK Score: ${currentReportData.league_roles.gk_score} pts\n`;
+        reportText += `GK Assist: ${currentReportData.league_roles.gk_assist} pts\n`;
+        reportText += `GK Clean Sheet: ${currentReportData.league_roles.gk_clean_sheet} pts\n`;
+        reportText += `DEF Clean Sheet: ${currentReportData.league_roles.def_clean_sheet} pts\n`;
+        reportText += `DEF Assist: ${currentReportData.league_roles.def_assist} pts\n`;
+        reportText += `DEF Score: ${currentReportData.league_roles.def_score} pts\n`;
+        reportText += `MID Assist: ${currentReportData.league_roles.mid_assist} pts\n`;
+        reportText += `MID Score: ${currentReportData.league_roles.mid_score} pts\n`;
+        reportText += `FOR Score: ${currentReportData.league_roles.for_score} pts\n`;
+        reportText += `FOR Assist: ${currentReportData.league_roles.for_assist} pts\n`;
+        reportText += `Miss Penalty: ${currentReportData.league_roles.miss_penalty} pts\n`;
+        reportText += `Yellow Card: ${currentReportData.league_roles.yellow_card} pts\n`;
+        reportText += `Red Card: ${currentReportData.league_roles.red_card} pts\n\n`;
+    }
+    
     reportText += `${'-'.repeat(50)}\n`;
     reportText += `Report generated on: ${new Date().toLocaleString()}\n`;
     reportText += `Fantaziko Admin Panel\n`;
@@ -1470,4 +1673,5 @@ function exportLeagueReport() {
     window.URL.revokeObjectURL(url);
 }
 </script>
+
 <?php include 'includes/footer.php'; ?>

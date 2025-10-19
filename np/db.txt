@@ -11,6 +11,7 @@
 
 2- TABLE admins (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL,
     email VARCHAR(100) NOT NULL,
     password VARCHAR(255) NOT NULL
 ) 
@@ -39,6 +40,48 @@
     league_id INT NOT NULL,
     role ENUM('Contributor', 'Admin') DEFAULT 'Contributor',
     total_score INT DEFAULT 0,
+    goalkeeper INT DEFAULT NULL,
+    defender1 INT DEFAULT NULL,
+    defender2 INT DEFAULT NULL,
+    defender3 INT DEFAULT NULL,
+    defender4 INT DEFAULT NULL,
+    defender5 INT DEFAULT NULL,
+    midfielder1 INT DEFAULT NULL,
+    midfielder2 INT DEFAULT NULL,
+    midfielder3 INT DEFAULT NULL,
+    midfielder4 INT DEFAULT NULL,
+    midfielder5 INT DEFAULT NULL,
+    forward1 INT DEFAULT NULL,
+    forward2 INT DEFAULT NULL,
+    forward3 INT DEFAULT NULL,
+    sub_goalkeeper INT DEFAULT NULL,
+    sub_defender1 INT DEFAULT NULL,
+    sub_defender2 INT DEFAULT NULL,
+    sub_midfielder1 INT DEFAULT NULL,
+    sub_midfielder2 INT DEFAULT NULL,
+    sub_forward1 INT DEFAULT NULL,
+    sub_forward2 INT DEFAULT NULL,
+    fk_goalkeeper FOREIGN KEY (goalkeeper) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_defender1 FOREIGN KEY (defender1) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_defender2 FOREIGN KEY (defender2) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_defender3 FOREIGN KEY (defender3) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_defender4 FOREIGN KEY (defender4) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_defender5 FOREIGN KEY (defender5) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_midfielder1 FOREIGN KEY (midfielder1) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_midfielder2 FOREIGN KEY (midfielder2) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_midfielder3 FOREIGN KEY (midfielder3) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_midfielder4 FOREIGN KEY (midfielder4) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_midfielder5 FOREIGN KEY (midfielder5) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_forward1 FOREIGN KEY (forward1) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_forward2 FOREIGN KEY (forward2) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_forward3 FOREIGN KEY (forward3) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_sub_goalkeeper FOREIGN KEY (sub_goalkeeper) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_sub_defender1 FOREIGN KEY (sub_defender1) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_sub_defender2 FOREIGN KEY (sub_defender2) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_sub_midfielder1 FOREIGN KEY (sub_midfielder1) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_sub_midfielder2 FOREIGN KEY (sub_midfielder2) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_sub_forward1 FOREIGN KEY (sub_forward1) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    fk_sub_forward2 FOREIGN KEY (sub_forward2) REFERENCES league_players(player_id) ON DELETE SET NULL,
     PRIMARY KEY (user_id, league_id),
     FOREIGN KEY (user_id) REFERENCES accounts(id) ON DELETE CASCADE,
     FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE
@@ -79,8 +122,8 @@
     team_id INT NOT NULL,
     player_name VARCHAR(100) NOT NULL,
     player_role ENUM('GK', 'DEF', 'MID', 'ATT') NOT NULL,
-    player_price DECIMAL(10,2) DEFAULT 0.00,  -- Fixed from NUM
-    total_points INT DEFAULT 0;
+    player_price DECIMAL(10,2) DEFAULT 0.00, 
+    total_points INT DEFAULT 0,
     FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE
     FOREIGN KEY (team_id) REFERENCES league_teams(id) ON DELETE SET NULL
 ) 
@@ -96,8 +139,8 @@
     team2_score INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE
-    FOREIGN KEY (team1_id) REFERENCES league_teams(id) ON DELETE SET NULL;
-    FOREIGN KEY (team2_id) REFERENCES league_teams(id) ON DELETE SET NULL;
+    FOREIGN KEY (team1_id) REFERENCES league_teams(id) ON DELETE SET NULL,
+    FOREIGN KEY (team2_id) REFERENCES league_teams(id) ON DELETE SET NULL,
 )
 
 
@@ -107,18 +150,22 @@
     scorer INT DEFAULT NULL,
     assister INT DEFAULT NULL,
     bonus INT DEFAULT NULL,
+    bonus_points INT DEFAULT 0,
     minus INT DEFAULT NULL,
+    minus_points INT DEFAULT 0,
+    saved_penalty_gk INT DEFAULT NULL,
+    missed_penalty_player INT DEFAULT NULL,
     yellow_card INT DEFAULT 0,
+    yellow_card_player INT DEFAULT NULL,
     red_card INT DEFAULT 0,
-    saved_penalty_gk INT DEFAULT NULL AFTER minus_points,
-    missed_penalty_player INT DEFAULT NULL AFTER saved_penalty_gk,
-    bonus_points INT DEFAULT 0 AFTER bonus,
-    minus_points INT DEFAULT 0 AFTER minus;
-    FOREIGN KEY (saved_penalty_gk) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    FOREIGN KEY (missed_penalty_player) REFERENCES league_players(player_id) ON DELETE SET NULL;
+    red_card_player INT DEFAULT NULL,
     FOREIGN KEY (match_id) REFERENCES matches(match_id) ON DELETE CASCADE,
     FOREIGN KEY (scorer) REFERENCES league_players(player_id) ON DELETE SET NULL,
     FOREIGN KEY (assister) REFERENCES league_players(player_id) ON DELETE SET NULL,
     FOREIGN KEY (bonus) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    FOREIGN KEY (minus) REFERENCES league_players(player_id) ON DELETE SET NULL
+    FOREIGN KEY (minus) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    FOREIGN KEY (saved_penalty_gk) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    FOREIGN KEY (missed_penalty_player) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    FOREIGN KEY (yellow_card_player) REFERENCES league_players(player_id) ON DELETE SET NULL,
+    FOREIGN KEY (red_card_player) REFERENCES league_players(player_id) ON DELETE SET NULL
 ) 

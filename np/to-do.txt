@@ -1,5 +1,0 @@
-players.php: add players to be associated with a team
-leagues.php: a way to see pending leagues to activate it
-login.php
-footer.php: edit footer links and things
-logout

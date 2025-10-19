@@ -1,14 +1,15 @@
 <?php
 session_start();
 require_once 'config/db.php';
+require_once 'includes/auth_check.php';
+define('CURRENCY_SYMBOL', 'EGP');
+define('CURRENCY_SIGN', 'EGP');
 
-// Handle AJAX requests
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
     
     if ($_GET['ajax'] === 'get_league_payments' && isset($_GET['league_id'])) {
         try {
-            // Get league information
             $stmt = $pdo->prepare("
                 SELECT 
                     l.*,
@@ -21,8 +22,6 @@ if (isset($_GET['ajax'])) {
             ");
             $stmt->execute([$_GET['league_id']]);
             $league = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            // Get contributors and their payment status
             $stmt = $pdo->prepare("
                 SELECT 
                     lc.*,
@@ -49,25 +48,23 @@ if (isset($_GET['ajax'])) {
     
     if ($_GET['ajax'] === 'get_payment_statistics') {
         try {
-            // Total revenue from all leagues
             $stmt = $pdo->query("
                 SELECT 
-                    SUM(l.price * l.num_of_players) as total_revenue,
-                    COUNT(DISTINCT l.id) as paid_leagues,
-                    SUM(l.num_of_players) as total_paid_players
+                    SUM(l.price) as total_revenue,
+                    COUNT(DISTINCT CASE WHEN l.price > 0 THEN l.id END) as paid_leagues,
+                    (SELECT COUNT(*) FROM league_contributors lc 
+                     JOIN leagues l2 ON lc.league_id = l2.id 
+                     WHERE l2.price > 0) as total_paid_contributors
                 FROM leagues l
-                WHERE l.price > 0
             ");
             $stats = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            // Count leagues by price range
             $stmt = $pdo->query("
                 SELECT 
                     CASE 
                         WHEN price = 0 THEN 'Free'
-                        WHEN price <= 50 THEN 'Low (1-50)'
-                        WHEN price <= 100 THEN 'Medium (51-100)'
-                        ELSE 'High (100+)'
+                        WHEN price <= 100 THEN 'Low (1-100)'
+                        WHEN price <= 300 THEN 'Medium (101-300)'
+                        ELSE 'High (300+)'
                     END as price_range,
                     COUNT(*) as count
                 FROM leagues
@@ -75,8 +72,8 @@ if (isset($_GET['ajax'])) {
                 ORDER BY 
                     CASE 
                         WHEN price = 0 THEN 1
-                        WHEN price <= 50 THEN 2
-                        WHEN price <= 100 THEN 3
+                        WHEN price <= 100 THEN 2
+                        WHEN price <= 300 THEN 3
                         ELSE 4
                     END
             ");
@@ -93,7 +90,6 @@ if (isset($_GET['ajax'])) {
     }
 }
 
-// Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
         try {
@@ -117,7 +113,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Fetch payment overview data
 $search = isset($_GET['search']) ? $_GET['search'] : '';
 $price_filter = isset($_GET['price_filter']) ? $_GET['price_filter'] : '';
 $status_filter = isset($_GET['status_filter']) ? $_GET['status_filter'] : '';
@@ -138,13 +133,13 @@ if (!empty($price_filter)) {
             $where_clauses[] = "l.price = 0";
             break;
         case 'low':
-            $where_clauses[] = "l.price > 0 AND l.price <= 50";
+            $where_clauses[] = "l.price > 0 AND l.price <= 100";
             break;
         case 'medium':
-            $where_clauses[] = "l.price > 50 AND l.price <= 100";
+            $where_clauses[] = "l.price > 100 AND l.price <= 300";
             break;
         case 'high':
-            $where_clauses[] = "l.price > 100";
+            $where_clauses[] = "l.price > 300";
             break;
     }
 }
@@ -168,7 +163,8 @@ try {
             a.username as owner_name,
             a.email as owner_email,
             a2.username as other_owner_name,
-            (l.price * l.num_of_players) as total_revenue
+            l.price as total_revenue,
+            (SELECT COUNT(*) FROM league_contributors WHERE league_id = l.id) as num_of_contributors
         FROM leagues l
         LEFT JOIN accounts a ON l.owner = a.id
         LEFT JOIN accounts a2 ON l.other_owner = a2.id
@@ -177,17 +173,15 @@ try {
     ");
     $stmt->execute($params);
     $leagues = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Calculate summary statistics
     $total_revenue = 0;
-    $total_players = 0;
+    $total_contributors = 0;
     $paid_leagues = 0;
     
     foreach ($leagues as $league) {
-        $total_revenue += $league['total_revenue'];
-        if ($league['price'] > 0) {
+        if ($league['price'] > 0 && $league['activated'] == 1) {
             $paid_leagues++;
-            $total_players += $league['num_of_players'];
+            $total_contributors += $league['num_of_contributors'];
+            $total_revenue += $league['price'];
         }
     }
     
@@ -807,7 +801,7 @@ include 'includes/sidebar.php';
                 <span class="stat-card-title">Total Revenue</span>
                 <div class="stat-card-icon icon-success">💵</div>
             </div>
-            <div class="stat-card-value">$<?php echo number_format($total_revenue, 2); ?></div>
+            <div class="stat-card-value"><?php echo number_format($total_revenue, 2); ?> <?php echo CURRENCY_SIGN; ?></div>
             <div class="stat-card-label">From all paid leagues</div>
         </div>
         
@@ -822,11 +816,11 @@ include 'includes/sidebar.php';
         
         <div class="stat-card warning">
             <div class="stat-card-header">
-                <span class="stat-card-title">Paid Players</span>
+                <span class="stat-card-title">Paid Contributors</span>
                 <div class="stat-card-icon icon-warning">👥</div>
             </div>
-            <div class="stat-card-value"><?php echo number_format($total_players); ?></div>
-            <div class="stat-card-label">Total paying participants</div>
+            <div class="stat-card-value"><?php echo number_format($total_contributors); ?></div>
+            <div class="stat-card-label">Total contributors in paid leagues</div>
         </div>
         
         <div class="stat-card secondary">
@@ -859,9 +853,9 @@ include 'includes/sidebar.php';
                     <select name="price_filter" class="filter-select">
                         <option value="">All Prices</option>
                         <option value="free" <?php echo $price_filter === 'free' ? 'selected' : ''; ?>>Free Leagues</option>
-                        <option value="low" <?php echo $price_filter === 'low' ? 'selected' : ''; ?>>Low ($1-$50)</option>
-                        <option value="medium" <?php echo $price_filter === 'medium' ? 'selected' : ''; ?>>Medium ($51-$100)</option>
-                        <option value="high" <?php echo $price_filter === 'high' ? 'selected' : ''; ?>>High ($100+)</option>
+                        <option value="low" <?php echo $price_filter === 'low' ? 'selected' : ''; ?>>Low (1-100 <?php echo CURRENCY_SIGN; ?>)</option>
+                        <option value="medium" <?php echo $price_filter === 'medium' ? 'selected' : ''; ?>>Medium (101-300 <?php echo CURRENCY_SIGN; ?>)</option>
+                        <option value="high" <?php echo $price_filter === 'high' ? 'selected' : ''; ?>>High (300+ <?php echo CURRENCY_SIGN; ?>)</option>
                     </select>
                 </div>
                 
@@ -896,7 +890,7 @@ include 'includes/sidebar.php';
         <div class="info-card">
             <div class="info-card-title">💡 About Payment Management</div>
             <div class="info-card-text">
-                This page shows all leagues and their associated payment information. Each league has an entry price that contributors must pay. The total revenue is calculated as (League Price × Number of Players). Click "View Details" to see individual contributor information and manage league pricing.
+                This page shows all leagues and their associated payment information. Each league has a <strong>one-time entry price</strong> that is paid to create/activate the league. The league price represents the total cost to set up the league. Click "View Details" to see individual contributor information and manage league pricing.
             </div>
         </div>
         
@@ -908,9 +902,9 @@ include 'includes/sidebar.php';
                             <th>League ID</th>
                             <th>League Name</th>
                             <th>Owner</th>
-                            <th>Entry Price</th>
-                            <th>Players</th>
-                            <th>Total Revenue</th>
+                            <th>League Price</th>
+                            <th>Contributors</th>
+                            <th>League Revenue</th>
                             <th>Status</th>
                             <th>Created</th>
                             <th>Actions</th>
@@ -929,14 +923,17 @@ include 'includes/sidebar.php';
                                 </td>
                                 <td>
                                     <span class="price-display <?php echo $league['price'] == 0 ? 'price-free' : ''; ?>">
-                                        <?php echo $league['price'] == 0 ? 'FREE' : '$' . number_format($league['price'], 2); ?>
+                                        <?php echo $league['price'] == 0 ? 'FREE' : number_format($league['price'], 2) . ' ' . CURRENCY_SIGN; ?>
                                     </span>
                                 </td>
-                                <td><?php echo number_format($league['num_of_players']); ?></td>
+                                <td>
+                                    <span class="badge badge-primary"><?php echo number_format($league['num_of_contributors']); ?> Contributors</span>
+                                </td>
                                 <td>
                                     <strong style="color: #28a745; font-size: 16px;">
-                                        $<?php echo number_format($league['total_revenue'], 2); ?>
+                                        <?php echo number_format($league['total_revenue'], 2); ?> <?php echo CURRENCY_SIGN; ?>
                                     </strong>
+                                    <br><small style="color: #999;">One-time league fee</small>
                                 </td>
                                 <td>
                                     <?php if ($league['activated']): ?>
@@ -980,15 +977,15 @@ include 'includes/sidebar.php';
                     <span class="league-info-value" id="detailLeagueName">-</span>
                 </div>
                 <div class="league-info-item">
-                    <span class="league-info-label">Entry Price</span>
+                    <span class="league-info-label">League Price</span>
                     <span class="league-info-value" id="detailLeaguePrice">-</span>
                 </div>
                 <div class="league-info-item">
-                    <span class="league-info-label">Total Players</span>
-                    <span class="league-info-value" id="detailLeaguePlayers">-</span>
+                    <span class="league-info-label">Total Contributors</span>
+                    <span class="league-info-value" id="detailLeagueContributors">-</span>
                 </div>
                 <div class="league-info-item">
-                    <span class="league-info-label">Total Revenue</span>
+                    <span class="league-info-label">League Revenue</span>
                     <span class="league-info-value" id="detailLeagueRevenue" style="color: #28a745;">-</span>
                 </div>
                 <div class="league-info-item">
@@ -1047,7 +1044,7 @@ include 'includes/sidebar.php';
                 <div class="info-card" style="border-left-color: #ffc107; background: linear-gradient(135deg, rgba(255, 193, 7, 0.1), rgba(255, 193, 7, 0.05));">
                     <div class="info-card-title" style="color: #ffc107;">⚠️ Important Notice</div>
                     <div class="info-card-text">
-                        Changing the league price will affect the total revenue calculation. Make sure all contributors are aware of any price changes. Set to $0.00 for a free league.
+                        The league price is a <strong>one-time fee</strong> for the entire league, not a per-player fee. This is the total amount paid to create/activate the league. Set to 0.00 for a free league.
                     </div>
                 </div>
                 
@@ -1057,7 +1054,7 @@ include 'includes/sidebar.php';
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">Entry Price ($) *</label>
+                    <label class="form-label">League Price (in <?php echo CURRENCY_SIGN; ?>) *</label>
                     <input 
                         type="number" 
                         name="price" 
@@ -1066,17 +1063,17 @@ include 'includes/sidebar.php';
                         required 
                         min="0" 
                         step="0.01"
-                        placeholder="Enter price (e.g., 25.00)"
+                        placeholder="Enter price (e.g., 50.00)"
                     >
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">Current Players</label>
-                    <input type="text" id="editPricePlayers" class="form-control" readonly style="background: #f8f9fa;">
+                    <label class="form-label">Current Contributors (For Reference)</label>
+                    <input type="text" id="editPriceContributors" class="form-control" readonly style="background: #f8f9fa;">
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">New Total Revenue</label>
+                    <label class="form-label">League Revenue</label>
                     <input type="text" id="editPriceNewRevenue" class="form-control" readonly style="background: #d4edda; color: #28a745; font-weight: 700; font-size: 16px;">
                 </div>
             </div>
@@ -1090,6 +1087,7 @@ include 'includes/sidebar.php';
 
 <script>
     let currentLeague = null;
+    const CURRENCY_SIGN = '<?php echo CURRENCY_SIGN; ?>';
     
     function viewLeagueDetails(leagueId) {
         fetch('?ajax=get_league_payments&league_id=' + leagueId)
@@ -1099,21 +1097,13 @@ include 'includes/sidebar.php';
                     alert('Error: ' + data.error);
                     return;
                 }
-                
                 currentLeague = data.league;
-                
-                // Update league info
                 document.getElementById('detailLeagueName').textContent = data.league.name;
-                
-                const priceDisplay = data.league.price == 0 ? 'FREE' : '
-                 + parseFloat(data.league.price).toFixed(2);
+                const priceDisplay = data.league.price == 0 ? 'FREE' : parseFloat(data.league.price).toFixed(2) + ' ' + CURRENCY_SIGN;
                 document.getElementById('detailLeaguePrice').textContent = priceDisplay;
-                
-                document.getElementById('detailLeaguePlayers').textContent = data.league.num_of_players;
-                
-                const totalRevenue = parseFloat(data.league.price) * parseInt(data.league.num_of_players);
-                document.getElementById('detailLeagueRevenue').textContent = '
-                 + totalRevenue.toFixed(2);
+                document.getElementById('detailLeagueContributors').textContent = data.contributors.length;
+                const leagueRevenue = parseFloat(data.league.price);
+                document.getElementById('detailLeagueRevenue').textContent = leagueRevenue.toFixed(2) + ' ' + CURRENCY_SIGN;
                 
                 let ownerText = data.league.owner_name || 'N/A';
                 if (data.league.other_owner_name) {
@@ -1134,10 +1124,7 @@ include 'includes/sidebar.php';
                     month: 'short', 
                     day: 'numeric' 
                 });
-                
-                // Update contributors
                 document.getElementById('contributorsCount').textContent = data.contributors.length;
-                
                 const container = document.getElementById('contributorsContainer');
                 
                 if (data.contributors.length === 0) {
@@ -1157,8 +1144,7 @@ include 'includes/sidebar.php';
                         
                         const paymentAmount = data.league.price == 0 ? 
                             '<span class="badge badge-success">FREE</span>' : 
-                            '<span class="price-display">
-                 + parseFloat(data.league.price).toFixed(2) + '</span>';
+                            '<span class="price-display">' + parseFloat(data.league.price).toFixed(2) + ' ' + CURRENCY_SIGN + '</span>';
                         
                         html += `
                             <div class="contributor-card">
@@ -1173,7 +1159,7 @@ include 'includes/sidebar.php';
                                     </div>
                                 </div>
                                 <div style="text-align: right;">
-                                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Entry Fee</div>
+                                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">League Fee</div>
                                     ${paymentAmount}
                                 </div>
                             </div>
@@ -1198,11 +1184,11 @@ include 'includes/sidebar.php';
     
     function openEditPriceModal() {
         if (!currentLeague) return;
-        
         document.getElementById('editPriceLeagueId').value = currentLeague.id;
         document.getElementById('editPriceLeagueName').value = currentLeague.name;
         document.getElementById('editPriceValue').value = parseFloat(currentLeague.price).toFixed(2);
-        document.getElementById('editPricePlayers').value = currentLeague.num_of_players;
+        const contributorsCount = document.getElementById('contributorsCount').textContent;
+        document.getElementById('editPriceContributors').value = contributorsCount;
         
         calculateNewRevenue();
         
@@ -1215,26 +1201,17 @@ include 'includes/sidebar.php';
     
     function calculateNewRevenue() {
         const priceInput = document.getElementById('editPriceValue');
-        const playersInput = document.getElementById('editPricePlayers');
         const revenueDisplay = document.getElementById('editPriceNewRevenue');
-        
         const price = parseFloat(priceInput.value) || 0;
-        const players = parseInt(playersInput.value) || 0;
-        const newRevenue = price * players;
         
-        revenueDisplay.value = '
-                 + newRevenue.toFixed(2)';
+        revenueDisplay.value = price.toFixed(2) + ' ' + CURRENCY_SIGN;
     }
-    
-    // Add event listener for price input
     document.addEventListener('DOMContentLoaded', function() {
         const priceInput = document.getElementById('editPriceValue');
         if (priceInput) {
             priceInput.addEventListener('input', calculateNewRevenue);
         }
     });
-    
-    // Close modals when clicking outside
     window.onclick = function(event) {
         const detailsModal = document.getElementById('leagueDetailsModal');
         const priceModal = document.getElementById('editPriceModal');
