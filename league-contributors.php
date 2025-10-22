@@ -116,84 +116,69 @@ if ($_GET['ajax'] === 'get_contributor_team' && isset($_GET['user_id']) && isset
             exit();
         }
         
+        // Fetch all players for this contributor
+        $stmt = $pdo->prepare("
+            SELECT 
+                cp.position, cp.slot_number, cp.is_benched,
+                lp.player_name, lp.player_role, lp.player_price, lp.total_points,
+                lt.team_name
+            FROM contributor_players cp
+            JOIN league_players lp ON cp.player_id = lp.player_id
+            LEFT JOIN league_teams lt ON lp.team_id = lt.id
+            WHERE cp.user_id = ? AND cp.league_id = ?
+            ORDER BY cp.is_benched ASC, 
+                FIELD(cp.position, 'GK', 'DEF', 'MID', 'ATT'),
+                cp.slot_number ASC
+        ");
+        $stmt->execute([$_GET['user_id'], $_GET['league_id']]);
+        $players = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
         $starting_xi = [];
         $substitutes = [];
         
-        // Define positions
-        $positions = [
-            'goalkeeper' => 'Goalkeeper',
-            'defender1' => 'Defender 1',
-            'defender2' => 'Defender 2',
-            'defender3' => 'Defender 3',
-            'defender4' => 'Defender 4',
-            'defender5' => 'Defender 5',
-            'midfielder1' => 'Midfielder 1',
-            'midfielder2' => 'Midfielder 2',
-            'midfielder3' => 'Midfielder 3',
-            'midfielder4' => 'Midfielder 4',
-            'midfielder5' => 'Midfielder 5',
-            'forward1' => 'Forward 1',
-            'forward2' => 'Forward 2',
-            'forward3' => 'Forward 3'
-        ];
-        
-        $sub_positions = [
-            'sub_goalkeeper' => 'Sub GK',
-            'sub_defender1' => 'Sub Defender 1',
-            'sub_defender2' => 'Sub Defender 2',
-            'sub_midfielder1' => 'Sub Midfielder 1',
-            'sub_midfielder2' => 'Sub Midfielder 2',
-            'sub_forward1' => 'Sub Forward 1',
-            'sub_forward2' => 'Sub Forward 2'
-        ];
-        
-        // Fetch starting XI
-        foreach ($positions as $field => $label) {
-            if ($contributor[$field]) {
-                $stmt = $pdo->prepare("
-                    SELECT 
-                        lp.player_name,
-                        lp.player_role,
-                        lp.player_price,
-                        lp.total_points,
-                        lt.team_name
-                    FROM league_players lp
-                    LEFT JOIN league_teams lt ON lp.team_id = lt.id
-                    WHERE lp.player_id = ?
-                ");
-                $stmt->execute([$contributor[$field]]);
-                $player = $stmt->fetch(PDO::FETCH_ASSOC);
-                
-                if ($player) {
-                    $player['position'] = $field;
-                    $player['position_label'] = $label;
-                    $starting_xi[] = $player;
-                }
+        foreach ($players as $row) {
+            $pos_enum = $row['position']; // 'GK', 'DEF', 'MID', 'ATT'
+            $slot = $row['slot_number'];
+            $is_bench = $row['is_benched'];
+            
+            $label_base = [
+                'GK' => 'Goalkeeper',
+                'DEF' => 'Defender',
+                'MID' => 'Midfielder',
+                'ATT' => 'Forward'
+            ][$pos_enum];
+            
+            $position = strtolower($label_base);
+            if ($pos_enum === 'ATT') {
+                $position = 'forward';
             }
-        }
-        
-        // Fetch substitutes
-        foreach ($sub_positions as $field => $label) {
-            if ($contributor[$field]) {
-                $stmt = $pdo->prepare("
-                    SELECT 
-                        lp.player_name,
-                        lp.player_role,
-                        lp.player_price,
-                        lp.total_points,
-                        lt.team_name
-                    FROM league_players lp
-                    LEFT JOIN league_teams lt ON lp.team_id = lt.id
-                    WHERE lp.player_id = ?
-                ");
-                $stmt->execute([$contributor[$field]]);
-                $player = $stmt->fetch(PDO::FETCH_ASSOC);
-                
-                if ($player) {
-                    $player['position'] = $field;
-                    $player['position_label'] = $label;
-                    $substitutes[] = $player;
-                }
+            
+            $label = $label_base;
+            
+            if ($is_bench) {
+                $label = 'Sub ' . ($pos_enum === 'GK' ? 'GK' : $label_base);
+                $position = 'sub_' . ($pos_enum === 'GK' ? 'goalkeeper' : $position);
+            }
+            
+            if ($pos_enum !== 'GK') {
+                $label .= ' ' . $slot;
+                $position .= $slot;
+            }
+            
+            $player = [
+                'player_name' => $row['player_name'],
+                'player_role' => $row['player_role'],
+                'player_price' => $row['player_price'],
+                'total_points' => $row['total_points'],
+                'team_name' => $row['team_name'],
+                'position' => $position,
+                'position_label' => $label
+            ];
+            
+            if ($is_bench) {
+                $substitutes[] = $player;
+            } else {
+                $starting_xi[] = $player;
             }
         }
         
@@ -335,7 +320,6 @@ try {
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
-
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
     
@@ -861,34 +845,34 @@ include 'includes/sidebar.php';
         }
     }
 </style>
-
 <div class="main-content">
     <div class="page-header">
         <h1 class="page-title">League Contributors Management</h1>
-        <button class="btn btn-primary" onclick="openCreateModal()">
-            ➕ Add Contributor
-        </button>
+        <button class="btn btn-primary" onclick="openCreateModal()"><i class="fas fa-plus"></i> Add Contributor</button>
     </div>
     
     <?php if (isset($success_message)): ?>
-        <div class="alert alert-success"><?php echo htmlspecialchars($success_message); ?></div>
+        <div class="alert alert-success">
+            <i class="fas fa-check-circle"></i> <?= $success_message ?>
+        </div>
     <?php endif; ?>
     
     <?php if (isset($error_message)): ?>
-        <div class="alert alert-error"><?php echo htmlspecialchars($error_message); ?></div>
+        <div class="alert alert-error">
+            <i class="fas fa-exclamation-circle"></i> <?= $error_message ?>
+        </div>
     <?php endif; ?>
     
     <div class="tabs">
-        <button class="tab active" onclick="switchTab('all-contributors')">📋 All Contributors</button>
-        <button class="tab" onclick="switchTab('standings')">🏆 League Standings</button>
+        <button class="tab active" onclick="switchTab('contributors')">Contributors</button>
+        <button class="tab" onclick="switchTab('standings')">League Standings</button>
     </div>
     
-    <!-- All Contributors Tab -->
-    <div id="all-contributors" class="tab-content active">
+    <div id="contributors" class="tab-content active">
         <div class="filters-bar">
             <div class="filter-group">
                 <label class="filter-label">Search</label>
-                <input type="text" id="searchInput" class="filter-control" placeholder="Search by username, email or league..." value="<?php echo htmlspecialchars($search); ?>">
+                <input type="text" id="searchInput" class="filter-control" placeholder="Search by username, email or league..." value="<?= htmlspecialchars($search) ?>">
             </div>
             
             <div class="filter-group">
@@ -896,8 +880,8 @@ include 'includes/sidebar.php';
                 <select id="leagueFilter" class="filter-control">
                     <option value="">All Leagues</option>
                     <?php foreach ($leagues as $league): ?>
-                        <option value="<?php echo $league['id']; ?>" <?php echo $league_filter == $league['id'] ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($league['name']); ?>
+                        <option value="<?= $league['id'] ?>" <?= $league_filter == $league['id'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($league['name']) ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
@@ -907,14 +891,12 @@ include 'includes/sidebar.php';
                 <label class="filter-label">Role</label>
                 <select id="roleFilter" class="filter-control">
                     <option value="">All Roles</option>
-                    <option value="Admin" <?php echo $role_filter == 'Admin' ? 'selected' : ''; ?>>Admin</option>
-                    <option value="Contributor" <?php echo $role_filter == 'Contributor' ? 'selected' : ''; ?>>Contributor</option>
+                    <option value="Contributor" <?= $role_filter == 'Contributor' ? 'selected' : '' ?>>Contributor</option>
+                    <option value="Admin" <?= $role_filter == 'Admin' ? 'selected' : '' ?>>Admin</option>
                 </select>
             </div>
             
-            <div class="filter-group" style="display: flex; align-items: flex-end;">
-                <button class="btn btn-primary" onclick="applyFilters()">🔍 Apply Filters</button>
-            </div>
+            <button class="btn btn-primary" onclick="applyFilters()"><i class="fas fa-filter"></i> Apply Filters</button>
         </div>
         
         <div class="data-card">
@@ -922,88 +904,66 @@ include 'includes/sidebar.php';
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>User ID</th>
+                            <th>League</th>
                             <th>Username</th>
                             <th>Email</th>
-                            <th>League</th>
                             <th>Role</th>
                             <th>Total Score</th>
-                            <th>League Status</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-    <?php if (!empty($contributors)): ?>
-        <?php foreach ($contributors as $contributor): ?>
-            <tr>
-                <td><?php echo htmlspecialchars($contributor['user_id']); ?></td>
-                <td><?php echo htmlspecialchars($contributor['username']); ?></td>
-                <td><?php echo htmlspecialchars($contributor['email']); ?></td>
-                <td><?php echo htmlspecialchars($contributor['league_name']); ?></td>
-                <td>
-                    <?php if ($contributor['role'] == 'Admin'): ?>
-                        <span class="badge badge-primary">Admin</span>
-                    <?php else: ?>
-                        <span class="badge badge-secondary">Contributor</span>
-                    <?php endif; ?>
-                </td>
-                <td><strong><?php echo number_format($contributor['total_score']); ?></strong></td>
-                <td>
-                    <?php if ($contributor['league_activated']): ?>
-                        <span class="badge badge-success">Active</span>
-                    <?php else: ?>
-                        <span class="badge badge-warning">Inactive</span>
-                    <?php endif; ?>
-                </td>
-                <td>
-                    <div class="action-buttons">
-                        <button class="btn btn-info btn-sm" onclick="viewTeam(<?php echo $contributor['user_id']; ?>, <?php echo $contributor['league_id']; ?>, '<?php echo htmlspecialchars($contributor['username']); ?>')">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
-                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                                <circle cx="9" cy="7" r="4"></circle>
-                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                            </svg>
-                            View Team
-                        </button>
-                        <button class="btn btn-secondary btn-sm" onclick="editContributor(<?php echo $contributor['user_id']; ?>, <?php echo $contributor['league_id']; ?>)">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
-                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                            </svg>
-                            Edit
-                        </button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteContributor(<?php echo $contributor['user_id']; ?>, <?php echo $contributor['league_id']; ?>, '<?php echo htmlspecialchars($contributor['username']); ?>', '<?php echo htmlspecialchars($contributor['league_name']); ?>')">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
-                                <polyline points="3 6 5 6 21 6"></polyline>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                            </svg>
-                            Remove
-                        </button>
-                    </div>
-                </td>
-            </tr>
-        <?php endforeach; ?>
-    <?php else: ?>
-        <tr>
-            <td colspan="8" style="text-align: center; color: #999; padding: 30px;">No contributors found</td>
-        </tr>
-    <?php endif; ?>
-</tbody>
+                        <?php if (empty($contributors)): ?>
+                            <tr>
+                                <td colspan="6" style="text-align: center; padding: 20px; color: #999;">
+                                    <i class="fas fa-search"></i> No contributors found
+                                </td>
+                            </tr>
+                        <?php else: ?>
+                            <?php foreach ($contributors as $contributor): ?>
+                                <tr>
+                                    <td>
+                                        <?= htmlspecialchars($contributor['league_name']) ?>
+                                        <?= $contributor['league_activated'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-warning">Inactive</span>' ?>
+                                    </td>
+                                    <td><strong><?= htmlspecialchars($contributor['username']) ?></strong></td>
+                                    <td><?= htmlspecialchars($contributor['email']) ?></td>
+                                    <td>
+                                        <span class="badge <?= $contributor['role'] === 'Admin' ? 'badge-primary' : 'badge-secondary' ?>">
+                                            <?= $contributor['role'] ?>
+                                        </span>
+                                    </td>
+                                    <td><strong><?= number_format($contributor['total_score']) ?></strong></td>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button class="btn btn-info btn-sm" onclick="viewTeam(<?= $contributor['user_id'] ?>, <?= $contributor['league_id'] ?>, '<?= htmlspecialchars($contributor['username']) ?>')">
+                                                <i class="fas fa-users"></i> View Team
+                                            </button>
+                                            <button class="btn btn-secondary btn-sm" onclick="editContributor(<?= $contributor['user_id'] ?>, <?= $contributor['league_id'] ?>)">
+                                                <i class="fas fa-edit"></i> Edit
+                                            </button>
+                                            <button class="btn btn-danger btn-sm" onclick="deleteContributor(<?= $contributor['user_id'] ?>, <?= $contributor['league_id'] ?>, '<?= htmlspecialchars($contributor['username']) ?>', '<?= htmlspecialchars($contributor['league_name']) ?>')">
+                                                <i class="fas fa-trash"></i> Delete
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
                 </table>
             </div>
         </div>
     </div>
     
-    <!-- League Standings Tab -->
     <div id="standings" class="tab-content">
-        <!-- League Selection View -->
         <div id="leagueSelectionView">
-            <div class="search-bar-standalone">
-                <div class="search-input-wrapper">
-                    <span class="search-icon">🔍</span>
-                    <input type="text" id="standingsSearch" placeholder="Search leagues by name or owner..." value="<?php echo htmlspecialchars($standings_search); ?>" onkeypress="if(event.key==='Enter') searchLeagues()">
+            <div class="filters-bar">
+                <div class="filter-group" style="flex: 3;">
+                    <label class="filter-label">Search Leagues</label>
+                    <input type="text" id="standingsSearch" class="filter-control" placeholder="Search by league name or owner..." value="<?= htmlspecialchars($standings_search) ?>">
                 </div>
+                <button class="btn btn-primary" onclick="searchLeagues()"><i class="fas fa-search"></i> Search</button>
             </div>
             
             <div class="data-card">
@@ -1011,46 +971,47 @@ include 'includes/sidebar.php';
                     <table class="data-table">
                         <thead>
                             <tr>
-                                <th>League ID</th>
                                 <th>League Name</th>
                                 <th>Owner</th>
-                                <th>Other Owner</th>
                                 <th>Players</th>
                                 <th>Teams</th>
                                 <th>System</th>
                                 <th>Status</th>
-                                <th>Action</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php if (!empty($leagues_list)): ?>
+                            <?php if (empty($leagues_list)): ?>
+                                <tr>
+                                    <td colspan="7" style="text-align: center; padding: 20px; color: #999;">
+                                        <i class="fas fa-trophy"></i> No leagues found
+                                    </td>
+                                </tr>
+                            <?php else: ?>
                                 <?php foreach ($leagues_list as $league): ?>
                                     <tr>
-                                        <td><?php echo htmlspecialchars($league['league_id']); ?></td>
-                                        <td><strong><?php echo htmlspecialchars($league['league_name']); ?></strong></td>
-                                        <td><?php echo htmlspecialchars($league['owner_name'] ?? 'N/A'); ?></td>
-                                        <td><?php echo htmlspecialchars($league['other_owner_name'] ?? 'N/A'); ?></td>
-                                        <td><?php echo $league['num_of_players']; ?></td>
-                                        <td><?php echo $league['num_of_teams']; ?></td>
-                                        <td><span class="badge badge-info"><?php echo htmlspecialchars($league['system']); ?></span></td>
+                                        <td><strong><?= htmlspecialchars($league['league_name']) ?></strong></td>
                                         <td>
-                                            <?php if ($league['league_activated']): ?>
-                                                <span class="badge badge-success">Active</span>
-                                            <?php else: ?>
-                                                <span class="badge badge-warning">Inactive</span>
-                                                <?php endif; ?>
+                                            <?= htmlspecialchars($league['owner_name']) ?>
+                                            <?= $league['other_owner_name'] ? ' & ' . htmlspecialchars($league['other_owner_name']) : '' ?>
+                                        </td>
+                                        <td><?= $league['num_of_players'] ?></td>
+                                        <td><?= $league['num_of_teams'] ?></td>
+                                        <td>
+                                            <span class="badge <?= $league['system'] === 'Budget' ? 'badge-info' : 'badge-success' ?>">
+                                                <?= $league['system'] ?>
+                                            </span>
                                         </td>
                                         <td>
-                                            <button class="btn btn-primary btn-sm" onclick="navigateToStandings(<?php echo $league['league_id']; ?>)">
-                                                🎯 Navigate
+                                            <?= $league['league_activated'] ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-warning">Inactive</span>' ?>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-primary btn-sm" onclick="navigateToStandings(<?= $league['league_id'] ?>)">
+                                                <i class="fas fa-chart-bar"></i> View Standings
                                             </button>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
-                            <?php else: ?>
-                                <tr>
-                                    <td colspan="9" style="text-align: center; color: #999; padding: 30px;">No leagues found</td>
-                                </tr>
                             <?php endif; ?>
                         </tbody>
                     </table>
@@ -1058,23 +1019,32 @@ include 'includes/sidebar.php';
             </div>
         </div>
         
-        <!-- League Standings View (Initially Hidden) -->
         <div id="leagueStandingsView" style="display: none;">
-            <div class="data-card">
-                <div class="standings-header">
-                    <div class="standings-header-info">
-                        <div class="standings-header-title" id="standingsLeagueName">League Name</div>
-                        <div class="standings-header-meta">
-                            <span id="standingsLeagueOwner">Owner: N/A</span>
-                            <span id="standingsLeaguePlayers">Players: 0</span>
-                            <span id="standingsLeagueSystem">System: N/A</span>
-                            <span id="standingsLeagueStatus">Status: N/A</span>
-                        </div>
-                    </div>
-                    <button class="standings-back-btn" onclick="backToLeagueSelection()">
-                        ← Back to Leagues
-                    </button>
+            <div class="page-header" style="margin-bottom: 20px;">
+                <button class="btn btn-secondary" onclick="backToLeagueSelection()"><i class="fas fa-arrow-left"></i> Back to Leagues</button>
+                <h2 id="standingsLeagueName" class="page-title"></h2>
+            </div>
+            
+            <div class="filters-bar" style="margin-bottom: 20px;">
+                <div class="filter-group">
+                    <label class="filter-label">Owner</label>
+                    <div id="standingsLeagueOwner" style="font-weight: 600; color: #333;"></div>
                 </div>
+                <div class="filter-group">
+                    <label class="filter-label">Players</label>
+                    <div id="standingsLeaguePlayers" style="font-weight: 600; color: #333;"></div>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">System</label>
+                    <div id="standingsLeagueSystem" style="font-weight: 600; color: #333;"></div>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Status</label>
+                    <div id="standingsLeagueStatus" style="font-weight: 600; color: #333;"></div>
+                </div>
+            </div>
+            
+            <div class="data-card">
                 <div class="table-container">
                     <table class="data-table">
                         <thead>
@@ -1087,9 +1057,6 @@ include 'includes/sidebar.php';
                             </tr>
                         </thead>
                         <tbody id="standingsTableBody">
-                            <tr>
-                                <td colspan="5" style="text-align: center; padding: 20px; color: #999;">Loading...</td>
-                            </tr>
                         </tbody>
                     </table>
                 </div>
@@ -1098,36 +1065,36 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
-<!-- Create/Edit Modal -->
+<!-- Contributor Modal -->
 <div id="contributorModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <span id="modalTitle">Add New Contributor</span>
-            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <h2 id="modalTitle">Add/Edit Contributor</h2>
+            <button class="close-btn" onclick="closeModal()"><i class="fas fa-times"></i></button>
         </div>
-        <form id="contributorForm" method="POST">
-            <div class="modal-body">
+        <div class="modal-body">
+            <form id="contributorForm" method="POST">
                 <input type="hidden" name="action" id="formAction" value="create">
                 
-                <div class="form-group" id="userSelectGroup">
-                    <label class="form-label">User *</label>
-                    <select name="user_id" id="user_id" class="form-control" required>
-                        <option value="">Select User</option>
-                    </select>
-                </div>
-                
                 <div class="form-group">
-                    <label class="form-label">League *</label>
-                    <select name="league_id" id="league_id" class="form-control" required onchange="loadAvailableUsers()">
+                    <label>League</label>
+                    <select name="league_id" id="league_id" class="form-control" onchange="loadAvailableUsers()" required>
                         <option value="">Select League</option>
                         <?php foreach ($leagues as $league): ?>
-                            <option value="<?php echo $league['id']; ?>"><?php echo htmlspecialchars($league['name']); ?></option>
+                            <option value="<?= $league['id'] ?>"><?= htmlspecialchars($league['name']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
                 
+                <div id="userSelectGroup" class="form-group">
+                    <label>User</label>
+                    <select name="user_id" id="user_id" class="form-control" required>
+                        <option value="">Select League First</option>
+                    </select>
+                </div>
+                
                 <div class="form-group">
-                    <label class="form-label">Role *</label>
+                    <label>Role</label>
                     <select name="role" id="role" class="form-control" required>
                         <option value="Contributor">Contributor</option>
                         <option value="Admin">Admin</option>
@@ -1135,39 +1102,39 @@ include 'includes/sidebar.php';
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">Total Score</label>
-                    <input type="number" name="total_score" id="total_score" class="form-control" value="0" min="0">
+                    <label>Total Score</label>
+                    <input type="number" name="total_score" id="total_score" class="form-control" value="0" required>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-danger" onclick="closeModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Save Contributor</button>
-            </div>
-        </form>
+                
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()"><i class="fas fa-times"></i> Cancel</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
 <!-- Delete Confirmation Modal -->
 <div id="deleteModal" class="modal">
-    <div class="modal-content" style="max-width: 500px;">
+    <div class="modal-content">
         <div class="modal-header">
-            <span>Confirm Remove</span>
-            <button class="modal-close" onclick="closeDeleteModal()">&times;</button>
+            <h2>Confirm Deletion</h2>
+            <button class="close-btn" onclick="closeDeleteModal()"><i class="fas fa-times"></i></button>
         </div>
-        <form id="deleteForm" method="POST">
-            <div class="modal-body">
+        <div class="modal-body">
+            <p>Are you sure you want to remove <strong id="deleteUsername"></strong> from <strong id="deleteLeagueName"></strong>?</p>
+            <p>This action cannot be undone.</p>
+        </div>
+        <div class="modal-footer">
+            <form method="POST">
                 <input type="hidden" name="action" value="delete">
                 <input type="hidden" name="user_id" id="deleteUserId">
                 <input type="hidden" name="league_id" id="deleteLeagueId">
-                <p style="font-size: 14px; color: #333; margin: 0;">
-                    Are you sure you want to remove <strong id="deleteUsername"></strong> from league <strong id="deleteLeagueName"></strong>? This action cannot be undone.
-                </p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-info" onclick="closeDeleteModal()">Cancel</button>
-                <button type="submit" class="btn btn-danger">Remove</button>
-            </div>
-        </form>
+                <button type="submit" class="btn btn-danger"><i class="fas fa-trash"></i> Delete</button>
+                <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()"><i class="fas fa-times"></i> Cancel</button>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -1175,13 +1142,16 @@ include 'includes/sidebar.php';
 <div id="viewTeamModal" class="modal">
     <div class="modal-content" style="max-width: 900px;">
         <div class="modal-header">
-            <span id="teamModalTitle">Team Details</span>
-            <button class="modal-close" onclick="closeViewTeamModal()">&times;</button>
+            <h2 id="teamModalTitle"></h2>
+            <button class="close-btn" onclick="closeViewTeamModal()"><i class="fas fa-times"></i></button>
         </div>
         <div class="modal-body">
-            <div id="teamLoadingMessage" style="text-align: center; padding: 30px; color: #999;">Loading team details...</div>
+            <div id="teamLoadingMessage" style="text-align: center; padding: 30px; color: #999;">
+                <i class="fas fa-spinner fa-spin"></i> Loading team data...
+            </div>
+            
             <div id="teamContent" style="display: none;">
-                <div style="margin-bottom: 20px;">
+                <div>
                     <h3 style="color: #1D60AC; margin-bottom: 10px;">Starting XI</h3>
                     <div class="table-container">
                         <table class="data-table">

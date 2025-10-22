@@ -917,7 +917,7 @@ include 'includes/sidebar.php';
     
     <!-- Pending Leagues Section -->
     <div class="section-header">
-        <h2 class="section-title-main">Pending League Requests</h2>
+        <h2 class="section-title-main">إفتح التتش يا كيمو</h2>
     </div>
     
     <div class="filter-bar">

@@ -182,7 +182,7 @@
 <footer class="footer">
     <div class="footer-content">
         <div class="footer-section">
-            <h3 class="footer-title">Fantaziko</h3>
+            <h3 class="footer-title">Fantazina</h3>
             <p class="footer-text">
                 Your ultimate fantasy sports management platform. Create leagues, manage teams, and track performance with ease.
             </p>

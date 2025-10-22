@@ -223,8 +223,8 @@ if (isset($_SESSION['admin_id'])) {
     <div class="header-left">
         <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
         <a href="index.php" class="header-logo">
-            <img src="assets/images/logo white outline.png" alt="Fantaziko Logo">
-            <span class="header-logo-text">Fantaziko Admin Board</span>
+            <img src="assets/images/logo white outline.png" alt="Fantazina Logo">
+            <span class="header-logo-text">Fantazina Admin Board</span>
         </a>
     </div>
     

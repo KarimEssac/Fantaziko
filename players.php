@@ -175,28 +175,11 @@ if ($_GET['ajax'] === 'get_player_stats' && isset($_GET['player_id'])) {
         // Get number of contributors who have this player in their lineup
         $stmt = $pdo->prepare("
             SELECT COUNT(DISTINCT user_id) as lineup_count
-            FROM league_contributors
+            FROM contributor_players
             WHERE league_id = ?
-            AND (
-                goalkeeper = ? OR
-                defender1 = ? OR defender2 = ? OR defender3 = ? OR defender4 = ? OR defender5 = ? OR
-                midfielder1 = ? OR midfielder2 = ? OR midfielder3 = ? OR midfielder4 = ? OR midfielder5 = ? OR
-                forward1 = ? OR forward2 = ? OR forward3 = ? OR
-                sub_goalkeeper = ? OR
-                sub_defender1 = ? OR sub_defender2 = ? OR
-                sub_midfielder1 = ? OR sub_midfielder2 = ? OR
-                sub_forward1 = ? OR sub_forward2 = ?
-            )
+            AND player_id = ?
         ");
-        $stmt->execute([
-            $player['league_id'],
-            $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], 
-            $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], 
-            $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], 
-            $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], 
-            $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], $_GET['player_id'], 
-            $_GET['player_id']
-        ]);
+        $stmt->execute([$player['league_id'], $_GET['player_id']]);
         $lineupResult = $stmt->fetch(PDO::FETCH_ASSOC);
         $lineupCount = $lineupResult['lineup_count'] ?? 0;
 
@@ -339,7 +322,6 @@ try {
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
-
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
     
@@ -999,556 +981,338 @@ include 'includes/sidebar.php';
         }
     }
 </style>
-
 <div class="main-content">
     <div class="page-header">
-        <h1 class="page-title">⚽ Players Management</h1>
+        <h1 class="page-title">Players Management</h1>
+        <div class="page-actions">
+            <button class="btn btn-primary" onclick="openAddPlayerModal()">➕ Add New Player</button>
+        </div>
     </div>
-    
+
     <?php if (isset($success_message)): ?>
         <div class="alert alert-success"><?php echo htmlspecialchars($success_message); ?></div>
     <?php endif; ?>
-    
     <?php if (isset($error_message)): ?>
         <div class="alert alert-error"><?php echo htmlspecialchars($error_message); ?></div>
     <?php endif; ?>
-    
-    <div class="tabs">
-        <button class="tab active" onclick="switchTab('league-selection')">🏆 Select League</button>
-        <button class="tab tab-disabled" id="playersTab" disabled>⚽ Players Management</button>
-        <button class="tab tab-disabled" id="playerStatsTab" disabled>📊 Player Statistics</button>
-    </div>
-    
-    <!-- League Selection Tab -->
-    <div id="league-selection" class="tab-content active">
-        <div class="search-bar-standalone">
+
+    <div class="search-bar-standalone">
+        <form method="GET">
             <div class="search-input-wrapper">
                 <span class="search-icon">🔍</span>
-                <input type="text" id="leaguesSearch" placeholder="Search leagues by name or owner..." value="<?php echo htmlspecialchars($leagues_search); ?>" onkeypress="if(event.key==='Enter') searchLeagues()">
+                <input type="text" name="leagues_search" placeholder="Search leagues, owners..." value="<?php echo htmlspecialchars($leagues_search); ?>">
+            </div>
+        </form>
+    </div>
+
+    <div id="leaguesList" class="data-card">
+        <div class="data-card-header">
+            <div class="header-info">
+                <div class="header-title">Leagues</div>
+                <div class="header-meta">Select a league to manage players</div>
             </div>
         </div>
-        
-        <div class="data-card">
-            <div class="table-container">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>League ID</th>
-                            <th>League Name</th>
-                            <th>Owner</th>
-                            <th>Other Owner</th>
-                            <th>Players</th>
-                            <th>Teams</th>
-                            <th>System</th>
-                            <th>Status</th>
-                            <th>Action</th>
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Owner</th>
+                        <th>Co-Owner</th>
+                        <th>Players</th>
+                        <th>Teams</th>
+                        <th>System</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($leagues_list as $league): ?>
+                        <tr data-league-id="<?php echo $league['league_id']; ?>">
+                            <td><?php echo htmlspecialchars($league['league_name']); ?></td>
+                            <td><?php echo htmlspecialchars($league['owner_name'] ?? 'N/A'); ?></td>
+                            <td><?php echo htmlspecialchars($league['other_owner_name'] ?? 'N/A'); ?></td>
+                            <td class="league-players"><?php echo $league['num_of_players']; ?></td>
+                            <td class="league-teams"><?php echo $league['num_of_teams']; ?></td>
+                            <td><?php echo $league['system'] === 'Budget' ? '💰 Budget' : '🚫 No Limits'; ?></td>
+                            <td><?php echo $league['league_activated'] ? '✅ Active' : '⏳ Inactive'; ?></td>
+                            <td>
+                                <button class="btn btn-primary btn-sm" onclick="showLeaguePlayers(<?php echo $league['league_id']; ?>, '<?php echo addslashes($league['league_name']); ?>', <?php echo $league['league_activated'] ? 1 : 0; ?>, '<?php echo $league['system']; ?>')">View Players</button>
+                            </td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (!empty($leagues_list)): ?>
-                            <?php foreach ($leagues_list as $league): ?>
-                                <tr>
-                                    <td><?php echo htmlspecialchars($league['league_id']); ?></td>
-                                    <td><strong><?php echo htmlspecialchars($league['league_name']); ?></strong></td>
-                                    <td><?php echo htmlspecialchars($league['owner_name'] ?? 'N/A'); ?></td>
-                                    <td><?php echo htmlspecialchars($league['other_owner_name'] ?? 'N/A'); ?></td>
-                                    <td><?php echo $league['num_of_players']; ?></td>
-                                    <td><?php echo $league['num_of_teams']; ?></td>
-                                    <td><span class="badge badge-info"><?php echo htmlspecialchars($league['system']); ?></span></td>
-                                    <td>
-                                        <?php if ($league['league_activated']): ?>
-                                            <span class="badge badge-success">Active</span>
-                                        <?php else: ?>
-                                            <span class="badge badge-warning">Inactive</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <button class="btn btn-primary btn-sm" onclick="selectLeague(<?php echo $league['league_id']; ?>)">
-                                            ⚽ Select
-                                        </button>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php else: ?>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="leagueContent" style="display: none;">
+        <div class="data-card">
+            <div class="data-card-header">
+                <div class="header-info">
+                    <div class="header-title" id="leagueHeaderTitle"></div>
+                    <div class="header-meta" id="leagueHeaderMeta"></div>
+                </div>
+                <button class="back-btn" onclick="backToLeagues()">← Back to Leagues</button>
+            </div>
+            <div class="tab-container">
+                <button id="playersListTab" class="tab active" onclick="switchTab('players-list')">Players List</button>
+                <button id="playerStatsTab" class="tab tab-disabled" disabled>Player Statistics</button>
+            </div>
+            <div id="playersList" class="tab-content active">
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
                             <tr>
-                                <td colspan="9" style="text-align: center; color: #999; padding: 30px;">No leagues found</td>
+                                <th>Name</th>
+                                <th>Position</th>
+                                <th>Team</th>
+                                <th>Points</th>
+                                <th>Price</th>
+                                <th>Actions</th>
                             </tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Players Management Tab -->
-    <div id="players-management" class="tab-content">
-        <div class="data-card">
-            <div class="data-card-header">
-                <div class="header-info">
-                    <div class="header-title" id="playersLeagueName">Select a league to manage players</div>
-                    <div class="header-meta" id="playersLeagueMeta"></div>
-                </div>
-                <div style="display: flex; gap: 10px;">
-                    <button class="btn btn-secondary" onclick="openAddPlayerModal()" id="addPlayerBtn" style="display: none;">
-                        ➕ Add Player
-                    </button>
-                    <button class="back-btn" onclick="backToSelection()">
-                        ← Back to Selection
-                    </button>
+                        </thead>
+                        <tbody id="playersTableBody"></tbody>
+                    </table>
                 </div>
             </div>
-            
-            <div class="info-card">
-                <div class="info-card-title">⚽ About Players Management</div>
-                <div class="info-card-text">
-                    Manage players within the selected league. You can add new players, edit player information (name, position, price), view detailed statistics, and delete players. Players are categorized by their roles: Goalkeeper (GK), Defender (DEF), Midfielder (MID), and Attacker (ATT).
-                </div>
-            </div>
-            
-            <div id="playersStatsRow" class="stats-row" style="display: none;">
-                <div class="stat-box">
-                    <div class="stat-label">Goalkeepers</div>
-                    <div class="stat-value" id="statGK">0</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-label">Defenders</div>
-                    <div class="stat-value" id="statDEF">0</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-label">Midfielders</div>
-                    <div class="stat-value" id="statMID">0</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-label">Attackers</div>
-                    <div class="stat-value" id="statATT">0</div>
-                </div>
-            </div>
-            
-            <div class="table-container">
-                <table class="data-table" id="playersTable">
-                    <thead>
-                        <tr>
-                            <th>Player ID</th>
-                            <th>Player Name</th>
-                            <th>Team</th>
-                            <th>Position</th>
-                            <th id="priceHeader">Price</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="playersTableBody">
-                        <tr>
-                            <td colspan="6" style="text-align: center; color: #999; padding: 30px;">Select a league to view players</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Player Statistics Tab -->
-    <div id="player-statistics" class="tab-content">
-        <div class="data-card">
-            <div class="data-card-header">
-                <div class="header-info">
-                    <div class="header-title" id="statsPlayerName">Player Statistics</div>
-                    <div class="header-meta" id="statsPlayerMeta"></div>
-                </div>
-                <button class="back-btn" onclick="backToPlayers()">
-                    ← Back to Players
-                </button>
-            </div>
-            
-            <div style="padding: 25px;">
-                <div id="playerStatsContent">
-                    <div style="text-align: center; color: #999; padding: 50px;">
-                        Select a player to view statistics
+            <div id="player-statistics" class="tab-content">
+                <div class="data-card-header">
+                    <div class="header-info">
+                        <div class="header-title" id="statsPlayerName"></div>
+                        <div class="header-meta" id="statsPlayerMeta"></div>
                     </div>
                 </div>
+                <div id="playerStatsContent"></div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Add Player Modal -->
-<div id="addPlayerModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <span>Add New Player</span>
-            <button class="modal-close" onclick="closeAddPlayerModal()">&times;</button>
-        </div>
-        <form id="addPlayerForm" method="POST">
-            <div class="modal-body">
+    <!-- Add Player Modal -->
+    <div id="addPlayerModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAddPlayerModal()">&times;</span>
+            <h2>Add New Player</h2>
+            <form method="POST">
                 <input type="hidden" name="action" value="add_player">
                 <input type="hidden" name="league_id" id="addPlayerLeagueId">
                 <div class="form-group">
-                    <label class="form-label">Team *</label>
-                    <select name="team_id" id="addPlayerTeam" class="form-control" required>
-                        <option value="">Select Team</option>
-                    </select>
+                    <label for="addPlayerName">Player Name</label>
+                    <input type="text" id="addPlayerName" name="player_name" required>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Player Name *</label>
-                    <input type="text" name="player_name" id="addPlayerName" class="form-control" required placeholder="Enter player name">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Position *</label>
-                    <select name="player_role" id="addPlayerRole" class="form-control" required>
+                    <label for="addPlayerRole">Position</label>
+                    <select id="addPlayerRole" name="player_role" required>
                         <option value="">Select Position</option>
-                        <option value="GK">🟡 Goalkeeper (GK)</option>
-                        <option value="DEF">🟢 Defender (DEF)</option>
-                        <option value="MID">🔵 Midfielder (MID)</option>
-                        <option value="ATT">🔴 Attacker (ATT)</option>
+                        <option value="GK">Goalkeeper</option>
+                        <option value="DEF">Defender</option>
+                        <option value="MID">Midfielder</option>
+                        <option value="ATT">Attacker</option>
                     </select>
                 </div>
-                
-                <div class="form-group" id="addPlayerPriceGroup" style="display: none;">
-                    <label class="form-label">Price <span id="addPriceOptional" style="color: #999; font-weight: normal;">(Optional)</span></label>
-                    <input type="number" name="player_price" id="addPlayerPrice" class="form-control" step="0.01" min="0" placeholder="Enter player price">
+                <div class="form-group">
+                    <label for="addPlayerTeam">Team</label>
+                    <select id="addPlayerTeam" name="team_id" required></select>
                 </div>
-
-                <div class="info-card" id="addPlayerPriceInfo" style="display: none;">
-                    <div class="info-card-text">
-                        💡 This league uses a "Budget" system. Player prices are important for team building.
-                    </div>
+                <div class="form-group" id="addPlayerPriceGroup">
+                    <label for="addPlayerPrice">Price <span id="addPriceOptional">(Optional)</span></label>
+                    <input type="number" step="0.01" id="addPlayerPrice" name="player_price">
+                    <small id="addPlayerPriceInfo" style="display: none;">Required for Budget system leagues</small>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-danger" onclick="closeAddPlayerModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">💾 Add Player</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Edit Player Modal -->
-<div id="editPlayerModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <span>Edit Player</span>
-            <button class="modal-close" onclick="closeEditPlayerModal()">&times;</button>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-success">Add Player</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeAddPlayerModal()">Cancel</button>
+                </div>
+            </form>
         </div>
-        <form id="editPlayerForm" method="POST">
-            <div class="modal-body">
+    </div>
+
+    <!-- Edit Player Modal -->
+    <div id="editPlayerModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeEditPlayerModal()">&times;</span>
+            <h2>Edit Player</h2>
+            <form method="POST">
                 <input type="hidden" name="action" value="update_player">
                 <input type="hidden" name="player_id" id="editPlayerId">
                 <div class="form-group">
-                    <label class="form-label">Team *</label>
-                    <select name="team_id" id="editPlayerTeam" class="form-control" required>
-                        <option value="">Select Team</option>
-                    </select>
+                    <label for="editPlayerName">Player Name</label>
+                    <input type="text" id="editPlayerName" name="player_name" required>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Player Name *</label>
-                    <input type="text" name="player_name" id="editPlayerName" class="form-control" required>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Position *</label>
-                    <select name="player_role" id="editPlayerRole" class="form-control" required>
+                    <label for="editPlayerRole">Position</label>
+                    <select id="editPlayerRole" name="player_role" required>
                         <option value="">Select Position</option>
-                        <option value="GK">🟡 Goalkeeper (GK)</option>
-                        <option value="DEF">🟢 Defender (DEF)</option>
-                        <option value="MID">🔵 Midfielder (MID)</option>
-                        <option value="ATT">🔴 Attacker (ATT)</option>
+                        <option value="GK">Goalkeeper</option>
+                        <option value="DEF">Defender</option>
+                        <option value="MID">Midfielder</option>
+                        <option value="ATT">Attacker</option>
                     </select>
                 </div>
-                
                 <div class="form-group">
-                    <label class="form-label">Price <span id="editPriceOptional" style="color: #999; font-weight: normal;">(Optional)</span></label>
-                    <input type="number" name="player_price" id="editPlayerPrice" class="form-control" step="0.01" min="0">
+                    <label for="editPlayerTeam">Team</label>
+                    <select id="editPlayerTeam" name="team_id" required></select>
                 </div>
-                
-                <div class="info-card" id="editPlayerPriceInfo" style="display: none;">
-                    <div class="info-card-text">
-                        💡 This league uses a "Budget" system. Player prices affect team building strategies.
-                    </div>
+                <div class="form-group">
+                    <label for="editPlayerPrice">Price <span id="editPriceOptional">(Optional)</span></label>
+                    <input type="number" step="0.01" id="editPlayerPrice" name="player_price">
+                    <small id="editPlayerPriceInfo" style="display: none;">Required for Budget system leagues</small>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-danger" onclick="closeEditPlayerModal()">Cancel</button>
-                <button type="submit" class="btn btn-primary">💾 Save Changes</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Delete Player Modal -->
-<div id="deletePlayerModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <span>Delete Player</span>
-            <button class="modal-close" onclick="closeDeletePlayerModal()">&times;</button>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-success">Update Player</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeEditPlayerModal()">Cancel</button>
+                </div>
+            </form>
         </div>
-        <form id="deletePlayerForm" method="POST">
-            <div class="modal-body">
+    </div>
+
+    <!-- Delete Player Modal -->
+    <div id="deletePlayerModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeDeletePlayerModal()">&times;</span>
+            <h2>Delete Player</h2>
+            <p>Are you sure you want to delete <strong id="deletePlayerName"></strong> (<span id="deletePlayerPosition"></span>)?</p>
+            <form method="POST">
                 <input type="hidden" name="action" value="delete_player">
                 <input type="hidden" name="player_id" id="deletePlayerId">
-                
-                <div class="info-card" style="border-left-color: #dc3545; background: linear-gradient(135deg, rgba(220, 53, 69, 0.1), rgba(220, 53, 69, 0.05));">
-                    <div class="info-card-title" style="color: #dc3545;">⚠️ Warning</div>
-                    <div class="info-card-text">
-                        Are you sure you want to delete the player "<strong id="deletePlayerName"></strong>" (<span id="deletePlayerPosition"></span>)?
-                        <br><br>
-                        <strong>This action will:</strong>
-                        <ul style="margin: 10px 0 0 20px; line-height: 1.8;">
-                            <li>Remove the player permanently from the league</li>
-                            <li>Remove all associated match points records</li>
-                            <li>This action cannot be undone</li>
-                        </ul>
-                    </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeDeletePlayerModal()">Cancel</button>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-info" onclick="closeDeletePlayerModal()">Cancel</button>
-                <button type="submit" class="btn btn-danger">🗑️ Delete Player</button>
-            </div>
-        </form>
+            </form>
+        </div>
     </div>
 </div>
 
 <script>
     let currentLeagueId = null;
     let currentLeagueSystem = null;
-    let currentTab = 'league-selection';
     let currentLeagueTeams = [];
     let currentPlayerId = null;
-    
-    function switchTab(tabName) {
-        const tabs = document.querySelectorAll('.tab');
-        const contents = document.querySelectorAll('.tab-content');
-        
-        tabs.forEach(tab => tab.classList.remove('active'));
-        contents.forEach(content => content.classList.remove('active'));
-        
-        event.target.classList.add('active');
-        document.getElementById(tabName).classList.add('active');
-        
-        currentTab = tabName;
-        
-        // Load data if league is selected and switching to players tab
-        if (currentLeagueId && tabName === 'players-management') {
-            loadLeaguePlayers(currentLeagueId);
-        }
-    }
-    
-    function searchLeagues() {
-        const search = document.getElementById('leaguesSearch').value;
-        let url = window.location.pathname + '?';
-        
-        if (search) {
-            url += 'leagues_search=' + encodeURIComponent(search);
-        }
-        
-        window.location.href = url;
-    }
-    
-    function selectLeague(leagueId) {
+    let currentTab = 'players-list';
+
+    function showLeaguePlayers(leagueId, leagueName, activated, system) {
         currentLeagueId = leagueId;
+        currentLeagueSystem = system;
         
-        // Enable the players tab
-        const playersTab = document.getElementById('playersTab');
-        playersTab.disabled = false;
-        playersTab.classList.remove('tab-disabled');
-        playersTab.onclick = function() { switchTab('players-management'); };
-        
-        // Load league info and teams
-        Promise.all([
-            fetch('?ajax=get_league_info&league_id=' + leagueId).then(r => r.json()),
-            fetch('?ajax=get_league_teams&league_id=' + leagueId).then(r => r.json())
-        ])
-        .then(([leagueData, teamsData]) => {
-            if (leagueData.error) {
-                alert('Error: ' + leagueData.error);
-                return;
-            }
-            
-            if (teamsData.error) {
-                alert('Error loading teams: ' + teamsData.error);
-                return;
-            }
-            
-            currentLeagueSystem = leagueData.system;
-            currentLeagueTeams = teamsData;
-            
-            // Update league header
-            updateLeagueHeader(leagueData);
-            
-            // Switch to players tab and load data
-            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
-            playersTab.classList.add('active');
-            document.getElementById('players-management').classList.add('active');
-            currentTab = 'players-management';
-            
-            // Show add player button
-            document.getElementById('addPlayerBtn').style.display = 'inline-flex';
-            
-            loadLeaguePlayers(leagueId);
-        })
-        .catch(error => {
-            console.error(error);
-            alert('Error loading league information');
-        });
-    }
-    
-    function updateLeagueHeader(league) {
-        const ownerText = 'Owner: ' + (league.owner_name || 'N/A') + 
-            (league.other_owner_name ? ' & ' + league.other_owner_name : '');
-        const statusBadge = league.activated == 1 ? 
-            '<span class="badge badge-success">Active</span>' : 
-            '<span class="badge badge-warning">Inactive</span>';
-        
-        const metaHtml = `
-            <span>${ownerText}</span>
-            <span>Players: ${league.num_of_players}</span>
-            <span>Teams: ${league.num_of_teams}</span>
-            <span>System: ${league.system}</span>
-            <span>Status: ${statusBadge}</span>
+        // Update header
+        document.getElementById('leagueHeaderTitle').textContent = leagueName;
+        document.getElementById('leagueHeaderMeta').innerHTML = `
+            Players: ${document.querySelector(`[data-league-id="${leagueId}"] .league-players`).textContent} |
+            Teams: ${document.querySelector(`[data-league-id="${leagueId}"] .league-teams`).textContent} |
+            System: ${system === 'Budget' ? '💰 Budget' : '🚫 No Limits'}
+            ${activated ? ' | ✅ Activated' : ''}
         `;
         
-        document.getElementById('playersLeagueName').textContent = league.name;
-        document.getElementById('playersLeagueMeta').innerHTML = metaHtml;
-    }
-    
-    function backToSelection() {
-        document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        // Show league content
+        document.getElementById('leaguesList').style.display = 'none';
+        document.getElementById('leagueContent').style.display = 'block';
         
-        document.querySelectorAll('.tab')[0].classList.add('active');
-        document.getElementById('league-selection').classList.add('active');
-        
-        // Disable the players tab and stats tab
-        const playersTab = document.getElementById('playersTab');
-        playersTab.disabled = true;
-        playersTab.classList.add('tab-disabled');
-        playersTab.onclick = null;
-        
+        // Enable tabs based on activation
+        const playersTab = document.getElementById('playersListTab');
         const statsTab = document.getElementById('playerStatsTab');
+        
+        playersTab.disabled = false;
+        playersTab.classList.remove('tab-disabled');
         statsTab.disabled = true;
         statsTab.classList.add('tab-disabled');
-        statsTab.onclick = null;
         
-        // Hide add player button and stats
-        document.getElementById('addPlayerBtn').style.display = 'none';
-        document.getElementById('playersStatsRow').style.display = 'none';
-        
-        currentTab = 'league-selection';
-        currentLeagueId = null;
-        currentLeagueSystem = null;
-        currentPlayerId = null;
+        // Load teams first
+        loadLeagueTeams(leagueId).then(() => {
+            // Then load players
+            loadLeaguePlayers(leagueId);
+        });
     }
-    
-    function backToPlayers() {
-        document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-        
-        const playersTab = document.getElementById('playersTab');
-        playersTab.classList.add('active');
-        document.getElementById('players-management').classList.add('active');
-        
-        currentTab = 'players-management';
-        
-        // Disable stats tab
-        const statsTab = document.getElementById('playerStatsTab');
-        statsTab.disabled = true;
-        statsTab.classList.add('tab-disabled');
-        statsTab.onclick = null;
-        
-        currentPlayerId = null;
+
+    function loadLeagueTeams(leagueId) {
+        return fetch(`?ajax=get_league_teams&league_id=${leagueId}`)
+            .then(response => response.json())
+            .then(teams => {
+                if (teams.error) {
+                    console.error(teams.error);
+                    return;
+                }
+                currentLeagueTeams = teams;
+            })
+            .catch(error => console.error(error));
     }
-    
+
     function loadLeaguePlayers(leagueId) {
         const tbody = document.getElementById('playersTableBody');
-        const priceHeader = document.getElementById('priceHeader');
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">Loading players...</td></tr>';
         
-        // Show/hide price column based on league system
-        if (currentLeagueSystem === 'No Limits') {
-            priceHeader.style.display = 'none';
-        } else {
-            priceHeader.style.display = '';
-        }
-        
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #999;">Loading...</td></tr>';
-        
-        fetch('?ajax=get_league_players&league_id=' + leagueId)
+        fetch(`?ajax=get_league_players&league_id=${leagueId}`)
             .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #dc3545;">Error: ' + data.error + '</td></tr>';
+            .then(players => {
+                if (players.error) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #dc3545;">Error: ' + players.error + '</td></tr>';
                     return;
                 }
                 
-                if (data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #999;">No players found in this league. Click "Add Player" to create one.</td></tr>';
-                    document.getElementById('playersStatsRow').style.display = 'none';
+                if (players.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #666;">No players found in this league</td></tr>';
                     return;
                 }
                 
-                // Calculate statistics
-                const stats = { GK: 0, DEF: 0, MID: 0, ATT: 0 };
-                data.forEach(player => {
-                    if (stats.hasOwnProperty(player.player_role)) {
-                        stats[player.player_role]++;
-                    }
-                });
-                
-                // Update stats display
-                document.getElementById('statGK').textContent = stats.GK;
-                document.getElementById('statDEF').textContent = stats.DEF;
-                document.getElementById('statMID').textContent = stats.MID;
-                document.getElementById('statATT').textContent = stats.ATT;
-                document.getElementById('playersStatsRow').style.display = 'grid';
-                
-                let html = '';
-                data.forEach(player => {
-                    const roleBadge = getRoleBadge(player.player_role);
-                    const teamDisplay = player.team_name ? 
-                        '<strong>' + player.team_name + '</strong>' : 
-                        '<span style="color: #999;">No Team</span>';
-                    
-                    let priceCell = '';
-                    if (currentLeagueSystem !== 'No Limits') {
-                        const priceDisplay = player.player_price ? 
-                            '<span class="price-display">' + parseFloat(player.player_price).toFixed(2) + '</span>' : 
-                            '<span style="color: #999;">N/A</span>';
-                        priceCell = `<td>${priceDisplay}</td>`;
-                    }
-                    
-                    html += `
-                        <tr>
-                            <td>${player.player_id}</td>
-                            <td><strong>${player.player_name}</strong></td>
-                            <td>${teamDisplay}</td>
-                            <td>${roleBadge}</td>
-                            ${priceCell}
-                            <td>
-                                <div class="action-buttons">
-                                    <button class="btn btn-success btn-sm" onclick="viewPlayerStats(${player.player_id})">
-                                        📊 Stats
-                                    </button>
-                                    <button class="btn btn-secondary btn-sm" onclick="editPlayer(${player.player_id})">
-                                        ✏️ Edit
-                                    </button>
-                                    <button class="btn btn-danger btn-sm" onclick="deletePlayer(${player.player_id}, '${player.player_name.replace(/'/g, "\\'")}', '${player.player_role}')">
-                                        🗑️ Delete
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
+                tbody.innerHTML = '';
+                players.forEach(player => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${player.player_name}</td>
+                        <td>${getRoleBadge(player.player_role)}</td>
+                        <td>${player.team_name || 'No Team'}</td>
+                        <td>${player.total_points || 0}</td>
+                        <td>${currentLeagueSystem === 'Budget' ? parseFloat(player.player_price || 0).toFixed(2) : '-'}</td>
+                        <td>
+                            <button class="btn btn-info btn-sm" onclick="viewPlayerStats(${player.player_id})">📊 Stats</button>
+                            <button class="btn btn-secondary btn-sm" onclick="editPlayer(${player.player_id})">✏️ Edit</button>
+                            <button class="btn btn-danger btn-sm" onclick="deletePlayer(${player.player_id}, '${escapeHtml(player.player_name)}', '${player.player_role}')">🗑️ Delete</button>
+                        </td>
                     `;
+                    tbody.appendChild(tr);
                 });
-                
-                tbody.innerHTML = html;
             })
             .catch(error => {
                 console.error(error);
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #dc3545;">Error loading players</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #dc3545;">Error loading players</td></tr>';
             });
     }
-    
+
+    function escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function backToLeagues() {
+        document.getElementById('leagueContent').style.display = 'none';
+        document.getElementById('leaguesList').style.display = 'block';
+        currentLeagueId = null;
+        currentLeagueSystem = null;
+        currentLeagueTeams = [];
+        currentPlayerId = null;
+        currentTab = 'players-list';
+    }
+
+    function switchTab(tabId) {
+        if (tabId === 'player-statistics' && !currentPlayerId) return;
+        
+        document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+        
+        document.getElementById(tabId + 'Tab').classList.add('active');
+        document.getElementById(tabId === 'players-list' ? 'playersList' : 'player-statistics').classList.add('active');
+        
+        currentTab = tabId;
+        
+        if (tabId === 'players-list') {
+            loadLeaguePlayers(currentLeagueId);
+        }
+    }
+
     function getRoleBadge(role) {
         const badges = {
             'GK': '<span class="badge badge-gk">🟡 Goalkeeper</span>',

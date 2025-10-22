@@ -277,7 +277,7 @@ include 'includes/sidebar.php';
 <div class="main-content">
     <div class="dashboard-header">
         <h1>Dashboard Overview</h1>
-        <p>Welcome to Fantaziko Admin Panel</p>
+        <p>Welcome to Fantazina Admin Panel</p>
     </div>
     
     <?php if (isset($error_message)): ?>
@@ -924,8 +924,8 @@ include 'includes/sidebar.php';
     <div class="header-left">
         <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
         <a href="index.php" class="header-logo">
-            <img src="assets/images/logo white outline.png" alt="Fantaziko Logo">
-            <span class="header-logo-text">Fantaziko Admin Board</span>
+            <img src="assets/images/logo white outline.png" alt="Fantazina Logo">
+            <span class="header-logo-text">Fantazina Admin Board</span>
         </a>
     </div>
     
@@ -1142,7 +1142,7 @@ include 'includes/sidebar.php';
 <footer class="footer">
     <div class="footer-content">
         <div class="footer-section">
-            <h3 class="footer-title">Fantaziko</h3>
+            <h3 class="footer-title">Fantazina</h3>
             <p class="footer-text">
                 Your ultimate fantasy sports management platform. Create leagues, manage teams, and track performance with ease.
             </p>
@@ -1191,7 +1191,7 @@ include 'includes/sidebar.php';
     <div class="footer-bottom">
         <div class="footer-bottom-content">
             <div class="copyright">
-                &copy; <?php echo date('Y'); ?> Fantaziko. All rights reserved.
+                &copy; <?php echo date('Y'); ?> Fantazina. All rights reserved.
             </div>
             <div class="footer-bottom-links">
                 <a href="#" class="footer-bottom-link">Privacy Policy</a>

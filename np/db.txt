@@ -35,59 +35,31 @@
     FOREIGN KEY (other_owner) REFERENCES accounts(id) ON DELETE SET NULL
 )
 
-4- TABLE league_contributors (
+4- league_contributors (
     user_id INT NOT NULL,
     league_id INT NOT NULL,
     role ENUM('Contributor', 'Admin') DEFAULT 'Contributor',
     total_score INT DEFAULT 0,
-    goalkeeper INT DEFAULT NULL,
-    defender1 INT DEFAULT NULL,
-    defender2 INT DEFAULT NULL,
-    defender3 INT DEFAULT NULL,
-    defender4 INT DEFAULT NULL,
-    defender5 INT DEFAULT NULL,
-    midfielder1 INT DEFAULT NULL,
-    midfielder2 INT DEFAULT NULL,
-    midfielder3 INT DEFAULT NULL,
-    midfielder4 INT DEFAULT NULL,
-    midfielder5 INT DEFAULT NULL,
-    forward1 INT DEFAULT NULL,
-    forward2 INT DEFAULT NULL,
-    forward3 INT DEFAULT NULL,
-    sub_goalkeeper INT DEFAULT NULL,
-    sub_defender1 INT DEFAULT NULL,
-    sub_defender2 INT DEFAULT NULL,
-    sub_midfielder1 INT DEFAULT NULL,
-    sub_midfielder2 INT DEFAULT NULL,
-    sub_forward1 INT DEFAULT NULL,
-    sub_forward2 INT DEFAULT NULL,
-    fk_goalkeeper FOREIGN KEY (goalkeeper) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_defender1 FOREIGN KEY (defender1) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_defender2 FOREIGN KEY (defender2) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_defender3 FOREIGN KEY (defender3) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_defender4 FOREIGN KEY (defender4) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_defender5 FOREIGN KEY (defender5) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_midfielder1 FOREIGN KEY (midfielder1) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_midfielder2 FOREIGN KEY (midfielder2) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_midfielder3 FOREIGN KEY (midfielder3) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_midfielder4 FOREIGN KEY (midfielder4) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_midfielder5 FOREIGN KEY (midfielder5) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_forward1 FOREIGN KEY (forward1) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_forward2 FOREIGN KEY (forward2) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_forward3 FOREIGN KEY (forward3) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_sub_goalkeeper FOREIGN KEY (sub_goalkeeper) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_sub_defender1 FOREIGN KEY (sub_defender1) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_sub_defender2 FOREIGN KEY (sub_defender2) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_sub_midfielder1 FOREIGN KEY (sub_midfielder1) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_sub_midfielder2 FOREIGN KEY (sub_midfielder2) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_sub_forward1 FOREIGN KEY (sub_forward1) REFERENCES league_players(player_id) ON DELETE SET NULL,
-    fk_sub_forward2 FOREIGN KEY (sub_forward2) REFERENCES league_players(player_id) ON DELETE SET NULL,
     PRIMARY KEY (user_id, league_id),
     FOREIGN KEY (user_id) REFERENCES accounts(id) ON DELETE CASCADE,
     FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE
-) 
+);
 
-5- league_roles (
+5- contributor_players (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    league_id INT NOT NULL,
+    player_id INT NOT NULL,
+    position ENUM('GK', 'DEF', 'MID', 'ATT') NOT NULL,
+    slot_number TINYINT DEFAULT 1,        -- order of player in formation
+    is_benched BOOLEAN DEFAULT 0,         -- 0 = starter, 1 = benched
+    FOREIGN KEY (player_id) REFERENCES league_players(player_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id, league_id) REFERENCES league_contributors(user_id, league_id) ON DELETE CASCADE,
+    INDEX (user_id, league_id),
+    INDEX (is_benched)
+);
+
+6- league_roles (
     league_id INT PRIMARY KEY,
     gk_save_penalty INT DEFAULT 0,
     gk_score INT DEFAULT 0,
@@ -107,7 +79,7 @@
 )
 
 
-6- TABLE league_teams (
+7- TABLE league_teams (
     id INT AUTO_INCREMENT PRIMARY KEY,
     league_id INT NOT NULL,
     team_name VARCHAR(100) NOT NULL,
@@ -116,7 +88,7 @@
 ) 
 
 
-7- TABLE league_players (
+8- TABLE league_players (
     player_id INT AUTO_INCREMENT PRIMARY KEY,
     league_id INT NOT NULL,
     team_id INT NOT NULL,
@@ -129,7 +101,7 @@
 ) 
 
 
-8- TABLE matches (
+9- TABLE matches (
     match_id INT AUTO_INCREMENT PRIMARY KEY,
     league_id INT NOT NULL,
     round INT NOT NULL,
@@ -144,7 +116,7 @@
 )
 
 
-9- TABLE matches_points (
+10- TABLE matches_points (
     id INT AUTO_INCREMENT PRIMARY KEY,
     match_id INT NOT NULL,
     scorer INT DEFAULT NULL,

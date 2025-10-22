@@ -269,7 +269,7 @@ include 'includes/sidebar.php';
 <div class="main-content">
     <div class="dashboard-header">
         <h1>Dashboard Overview</h1>
-        <p>Welcome to Fantaziko Admin Panel</p>
+        <p>Welcome to Fantazina Admin Panel</p>
     </div>
     
     <?php if (isset($error_message)): ?>

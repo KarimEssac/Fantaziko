@@ -805,7 +805,7 @@ include 'includes/sidebar.php';
         <div class="info-card">
             <div class="info-card-title">📊 Platform Overview</div>
             <div class="info-card-text">
-                View comprehensive statistics across all leagues, accounts, and activities on the Fantaziko platform. This dashboard provides insights into overall platform performance and usage.
+                View comprehensive statistics across all leagues, accounts, and activities on the Fantazina platform. This dashboard provides insights into overall platform performance and usage.
             </div>
         </div>
         
@@ -1555,7 +1555,7 @@ function exportLeagueReport() {
     }
     
     const league = currentReportData.league;
-    let reportText = `FANTAZIKO LEAGUE REPORT\n`;
+    let reportText = `Fantazina LEAGUE REPORT\n`;
     reportText += `${'='.repeat(50)}\n\n`;
     reportText += `League: ${league.name}\n`;
     reportText += `Owner: ${league.owner_name || 'N/A'}`;
@@ -1659,7 +1659,7 @@ function exportLeagueReport() {
     
     reportText += `${'-'.repeat(50)}\n`;
     reportText += `Report generated on: ${new Date().toLocaleString()}\n`;
-    reportText += `Fantaziko Admin Panel\n`;
+    reportText += `Fantazina Admin Panel\n`;
     
     // Create and download file
     const blob = new Blob([reportText], { type: 'text/plain' });

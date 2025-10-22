@@ -2197,118 +2197,106 @@ function getMatchGKOptions() {
     }
     
     function handlePenaltyGKChange(selectElement, pairIndex) {
-        const savedGkId = selectElement.value;
-        const missedPlayerSelect = document.querySelector(`select[name="missed_penalty_players[]"][data-pair="${pairIndex}"]`);
-        
-        if (!missedPlayerSelect) return;
-        
-        const currentMissedPlayer = missedPlayerSelect.value;
-        
-        // Find the GK's team
-        let gkTeamId = null;
-        if (savedGkId) {
-            const gkPlayer = leaguePlayers.find(p => p.player_id == savedGkId);
-            if (gkPlayer) {
-                gkTeamId = gkPlayer.team_id;
-            }
-        }
-        
-        // Rebuild missed player options
-        missedPlayerSelect.innerHTML = '<option value="">-- Select Player --</option>';
-        
-        leaguePlayers.forEach(player => {
-            // Skip if no GK selected
-            if (!savedGkId) {
-                // Show all players if no GK selected
-                const option = document.createElement('option');
-                option.value = player.player_id;
-                option.textContent = `${player.player_name} (${player.player_role}) - ${player.team_name || 'No Team'}`;
-                missedPlayerSelect.appendChild(option);
-                return;
-            }
-            
-            // Skip if this player is the GK (can't miss own save)
-            if (player.player_id == savedGkId) {
-                return;
-            }
-            
-            // Skip if this player is from the same team as GK (can't miss penalty from own team)
-            if (gkTeamId && player.team_id == gkTeamId) {
-                return;
-            }
-            
-            // Only add valid players (opposing team, not the GK)
-            const option = document.createElement('option');
-            option.value = player.player_id;
-            option.textContent = `${player.player_name} (${player.player_role}) - ${player.team_name || 'No Team'}`;
-            missedPlayerSelect.appendChild(option);
-        });
-        
-        // Restore previous selection if it's still valid
-        if (currentMissedPlayer && currentMissedPlayer != savedGkId) {
-            const currentMissedPlayerObj = leaguePlayers.find(p => p.player_id == currentMissedPlayer);
-            if (currentMissedPlayerObj && currentMissedPlayerObj.team_id != gkTeamId) {
-                missedPlayerSelect.value = currentMissedPlayer;
-            }
+    const savedGkId = selectElement.value;
+    const missedPlayerSelect = document.querySelector(`select[name="missed_penalty_players[]"][data-pair="${pairIndex}"]`);
+    
+    if (!missedPlayerSelect) return;
+    
+    const currentMissedPlayer = missedPlayerSelect.value;
+    
+    // Find the GK's team
+    let gkTeamId = null;
+    if (savedGkId) {
+        const gkPlayer = leaguePlayers.find(p => p.player_id == savedGkId);
+        if (gkPlayer) {
+            gkTeamId = gkPlayer.team_id;
         }
     }
     
-    function handlePenaltyMissedPlayerChange(selectElement, pairIndex) {
-        const missedPlayerId = selectElement.value;
-        const savedGkSelect = document.querySelector(`select[name="saved_penalty_gks[]"][data-pair="${pairIndex}"]`);
+    // Rebuild missed player options - ONLY show players from the opposing team in this match
+    missedPlayerSelect.innerHTML = '<option value="">-- Select Player --</option>';
+    
+    leaguePlayers.forEach(player => {
+        // CRITICAL FIX: Only include players from the two match teams
+        const isInMatch = (player.team_id == currentMatchTeams.team1_id || player.team_id == currentMatchTeams.team2_id);
+        if (!isInMatch) return;
         
-        if (!savedGkSelect) return;
-        
-        const currentGk = savedGkSelect.value;
-        
-        // Find the missed player's team
-        let missedPlayerTeamId = null;
-        if (missedPlayerId) {
-            const missedPlayerObj = leaguePlayers.find(p => p.player_id == missedPlayerId);
-            if (missedPlayerObj) {
-                missedPlayerTeamId = missedPlayerObj.team_id;
-            }
+        // Skip if this player is the GK (can't miss own save)
+        if (savedGkId && player.player_id == savedGkId) {
+            return;
         }
         
-        // Rebuild GK options - only show GKs from opposing team
-        savedGkSelect.innerHTML = '<option value="">-- Select Goalkeeper --</option>';
+        // Skip if this player is from the same team as GK (can't miss penalty from own team)
+        if (savedGkId && gkTeamId && player.team_id == gkTeamId) {
+            return;
+        }
         
-        leaguePlayers.filter(player => player.player_role === 'GK').forEach(player => {
-            // Skip if no missed player selected
-            if (!missedPlayerId) {
-                // Show all GKs if no missed player selected
-                const option = document.createElement('option');
-                option.value = player.player_id;
-                option.textContent = `${player.player_name} - ${player.team_name || 'No Team'}`;
-                savedGkSelect.appendChild(option);
-                return;
-            }
-            
-            // Skip if this GK is the missed player (can't save own penalty)
-            if (player.player_id == missedPlayerId) {
-                return;
-            }
-            
-            // Skip if this GK is from the same team as missed player (can't save penalty from own team)
-            if (missedPlayerTeamId && player.team_id == missedPlayerTeamId) {
-                return;
-            }
-            
-            // Only add valid GKs (opposing team, not the missed player)
-            const option = document.createElement('option');
-            option.value = player.player_id;
-            option.textContent = `${player.player_name} - ${player.team_name || 'No Team'}`;
-            savedGkSelect.appendChild(option);
-        });
-        
-        // Restore previous selection if it's still valid
-        if (currentGk && currentGk != missedPlayerId) {
-            const currentGkObj = leaguePlayers.find(p => p.player_id == currentGk);
-            if (currentGkObj && currentGkObj.team_id != missedPlayerTeamId) {
-                savedGkSelect.value = currentGk;
-            }
+        // Only add valid players (opposing team in the match, not the GK)
+        const option = document.createElement('option');
+        option.value = player.player_id;
+        option.textContent = `${player.player_name} (${player.player_role}) - ${player.team_name || 'No Team'}`;
+        missedPlayerSelect.appendChild(option);
+    });
+    
+    // Restore previous selection if it's still valid
+    if (currentMissedPlayer && currentMissedPlayer != savedGkId) {
+        const currentMissedPlayerObj = leaguePlayers.find(p => p.player_id == currentMissedPlayer);
+        if (currentMissedPlayerObj && currentMissedPlayerObj.team_id != gkTeamId) {
+            missedPlayerSelect.value = currentMissedPlayer;
         }
     }
+}
+    
+    function handlePenaltyMissedPlayerChange(selectElement, pairIndex) {
+    const missedPlayerId = selectElement.value;
+    const savedGkSelect = document.querySelector(`select[name="saved_penalty_gks[]"][data-pair="${pairIndex}"]`);
+    
+    if (!savedGkSelect) return;
+    
+    const currentGk = savedGkSelect.value;
+    
+    // Find the missed player's team
+    let missedPlayerTeamId = null;
+    if (missedPlayerId) {
+        const missedPlayerObj = leaguePlayers.find(p => p.player_id == missedPlayerId);
+        if (missedPlayerObj) {
+            missedPlayerTeamId = missedPlayerObj.team_id;
+        }
+    }
+    
+    // Rebuild GK options - ONLY show GKs from the opposing team in this match
+    savedGkSelect.innerHTML = '<option value="">-- Select Goalkeeper --</option>';
+    
+    leaguePlayers.filter(player => player.player_role === 'GK').forEach(player => {
+        // CRITICAL FIX: Only include GKs from the two match teams
+        const isInMatch = (player.team_id == currentMatchTeams.team1_id || player.team_id == currentMatchTeams.team2_id);
+        if (!isInMatch) return;
+        
+        // Skip if this GK is the missed player (can't save own penalty)
+        if (missedPlayerId && player.player_id == missedPlayerId) {
+            return;
+        }
+        
+        // Skip if this GK is from the same team as missed player (can't save penalty from own team)
+        if (missedPlayerId && missedPlayerTeamId && player.team_id == missedPlayerTeamId) {
+            return;
+        }
+        
+        // Only add valid GKs (opposing team in the match, not the missed player)
+        const option = document.createElement('option');
+        option.value = player.player_id;
+        option.textContent = `${player.player_name} - ${player.team_name || 'No Team'}`;
+        savedGkSelect.appendChild(option);
+    });
+    
+    // Restore previous selection if it's still valid
+    if (currentGk && currentGk != missedPlayerId) {
+        const currentGkObj = leaguePlayers.find(p => p.player_id == currentGk);
+        if (currentGkObj && currentGkObj.team_id != missedPlayerTeamId) {
+            savedGkSelect.value = currentGk;
+        }
+    }
+}
     
     function closeAddPointModal() {
         document.getElementById('addPointModal').classList.remove('active');
@@ -2729,14 +2717,14 @@ function getMatchGKOptions() {
         <div class="form-row">
             <div class="form-group">
                 <label class="form-label">🧤 Goalkeeper Who Saved</label>
-                <select name="saved_penalty_gks[]" class="form-control" data-pair="${penaltyCount}" onchange="handlePenaltyGKChange(this, ${penaltyCount})">
+                <select name="saved_penalty_gks[]" class="form-control penalty-gk-select" data-pair="${penaltyCount}" onchange="handlePenaltyGKChange(this, ${penaltyCount})">
                     <option value="">-- Select Goalkeeper --</option>
                     ${getMatchGKOptions()}
                 </select>
             </div>
             <div class="form-group">
                 <label class="form-label">⚠️ Player Who Missed <span style="color: red;">*</span></label>
-                <select name="missed_penalty_players[]" class="form-control" data-pair="${penaltyCount}" onchange="handlePenaltyMissedPlayerChange(this, ${penaltyCount})">
+                <select name="missed_penalty_players[]" class="form-control penalty-missed-select" data-pair="${penaltyCount}" onchange="handlePenaltyMissedPlayerChange(this, ${penaltyCount})">
                     <option value="">-- Select Player --</option>
                     ${getMatchPlayerOptions()}
                 </select>
