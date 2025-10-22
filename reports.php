@@ -9,8 +9,6 @@ if (isset($_GET['ajax'])) {
     if ($_GET['ajax'] === 'get_league_report' && isset($_GET['league_id'])) {
         try {
             $league_id = $_GET['league_id'];
-            
-            // Get league details
             $stmt = $pdo->prepare("
                 SELECT 
                     l.*,
@@ -28,8 +26,6 @@ if (isset($_GET['ajax'])) {
                 echo json_encode(['error' => 'League not found']);
                 exit();
             }
-            
-            // Get contributors with scores
             $stmt = $pdo->prepare("
                 SELECT 
                     lc.*,
@@ -42,8 +38,6 @@ if (isset($_GET['ajax'])) {
             ");
             $stmt->execute([$league_id]);
             $contributors = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Get teams with scores
             $stmt = $pdo->prepare("
                 SELECT * FROM league_teams
                 WHERE league_id = ?
@@ -51,8 +45,6 @@ if (isset($_GET['ajax'])) {
             ");
             $stmt->execute([$league_id]);
             $teams = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Get total matches
             $stmt = $pdo->prepare("
                 SELECT COUNT(*) as total_matches
                 FROM matches
@@ -60,8 +52,6 @@ if (isset($_GET['ajax'])) {
             ");
             $stmt->execute([$league_id]);
             $match_stats = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            // Get players count
             $stmt = $pdo->prepare("
                 SELECT COUNT(*) as total_players
                 FROM league_players
@@ -69,8 +59,6 @@ if (isset($_GET['ajax'])) {
             ");
             $stmt->execute([$league_id]);
             $player_stats = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            // Get top scorers
             $stmt = $pdo->prepare("
                 SELECT 
                     lp.player_name,
@@ -89,8 +77,6 @@ if (isset($_GET['ajax'])) {
             ");
             $stmt->execute([$league_id, $league_id]);
             $top_scorers = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Get top assisters
             $stmt = $pdo->prepare("
                 SELECT 
                     lp.player_name,
@@ -109,8 +95,6 @@ if (isset($_GET['ajax'])) {
             ");
             $stmt->execute([$league_id, $league_id]);
             $top_assisters = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Get top players by total points
             $stmt = $pdo->prepare("
                 SELECT 
                     lp.player_name,
@@ -125,8 +109,6 @@ if (isset($_GET['ajax'])) {
             ");
             $stmt->execute([$league_id]);
             $top_players = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Get league roles configuration
             $stmt = $pdo->prepare("
                 SELECT * FROM league_roles
                 WHERE league_id = ?
@@ -153,7 +135,6 @@ if (isset($_GET['ajax'])) {
     
     if ($_GET['ajax'] === 'get_overall_stats') {
         try {
-            // Total statistics
             $stmt = $pdo->query("SELECT COUNT(*) as count FROM accounts");
             $total_accounts = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
             
@@ -171,8 +152,6 @@ if (isset($_GET['ajax'])) {
             
             $stmt = $pdo->query("SELECT COUNT(*) as count FROM matches");
             $total_matches = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
-            
-            // Top leagues by players
             $stmt = $pdo->query("
                 SELECT 
                     l.name,
@@ -185,8 +164,6 @@ if (isset($_GET['ajax'])) {
                 LIMIT 5
             ");
             $top_leagues = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            // Recent activity
             $stmt = $pdo->query("
                 SELECT 
                     l.name as league_name,
@@ -216,7 +193,6 @@ if (isset($_GET['ajax'])) {
     }
 }
 
-// Fetch all leagues for selection
 $leagues_search = isset($_GET['leagues_search']) ? $_GET['leagues_search'] : '';
 $leagues_where = '';
 $leagues_params = [];
@@ -973,7 +949,6 @@ let currentLeagueId = null;
 let currentTab = 'overall-stats';
 let currentReportData = null;
 
-// Load overall stats on page load
 document.addEventListener('DOMContentLoaded', function() {
     loadOverallStats();
 });
@@ -999,8 +974,7 @@ function loadOverallStats() {
                 console.error('Error:', data.error);
                 return;
             }
-            
-            // Update stat cards
+
             const statCards = document.querySelectorAll('#overallStatsGrid .stat-card-value');
             statCards[0].textContent = data.total_accounts.toLocaleString();
             statCards[1].textContent = data.total_leagues.toLocaleString();
@@ -1008,8 +982,6 @@ function loadOverallStats() {
             statCards[3].textContent = data.total_players.toLocaleString();
             statCards[4].textContent = data.total_teams.toLocaleString();
             statCards[5].textContent = data.total_matches.toLocaleString();
-            
-            // Update top leagues
             const topLeaguesContainer = document.getElementById('topLeaguesContainer');
             if (data.top_leagues.length === 0) {
                 topLeaguesContainer.innerHTML = '<div class="no-data-message">No leagues data available</div>';
@@ -1035,7 +1007,6 @@ function loadOverallStats() {
                 topLeaguesContainer.innerHTML = html;
             }
             
-            // Update recent activity
             const recentActivityContainer = document.getElementById('recentActivityContainer');
             if (data.recent_leagues.length === 0) {
                 recentActivityContainer.innerHTML = '<div class="no-data-message">No recent activity</div>';
@@ -1081,25 +1052,17 @@ function searchLeagues() {
 
 function generateLeagueReport(leagueId) {
     currentLeagueId = leagueId;
-    
-    // Enable the league report tab
     const reportTab = document.getElementById('leagueReportTab');
     reportTab.disabled = false;
     reportTab.classList.remove('tab-disabled');
     reportTab.onclick = function() { switchTab('league-report'); };
-    
-    // Switch to league report tab
     document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
     
     reportTab.classList.add('active');
     document.getElementById('league-report').classList.add('active');
     currentTab = 'league-report';
-    
-    // Show loading
     document.getElementById('leagueReportContent').innerHTML = '<div class="no-data-message">Loading report...</div>';
-    
-    // Load league report
     fetch('?ajax=get_league_report&league_id=' + leagueId)
         .then(response => response.json())
         .then(data => {
@@ -1110,8 +1073,6 @@ function generateLeagueReport(leagueId) {
             
             currentReportData = data;
             displayLeagueReport(data);
-            
-            // Show export button
             document.getElementById('exportBtn').style.display = 'inline-flex';
         })
         .catch(error => {
@@ -1122,8 +1083,6 @@ function generateLeagueReport(leagueId) {
 
 function displayLeagueReport(data) {
     const league = data.league;
-    
-    // Update header
     const ownerText = 'Owner: ' + (league.owner_name || 'N/A') + 
         (league.other_owner_name ? ' & ' + league.other_owner_name : '');
     const statusBadge = league.activated == 1 ? 
@@ -1140,11 +1099,7 @@ function displayLeagueReport(data) {
     
     document.getElementById('leagueReportName').textContent = league.name;
     document.getElementById('leagueReportMeta').innerHTML = metaHtml;
-    
-    // Build report content
     let html = '';
-    
-    // League Statistics
     html += `
         <div class="report-section">
             <div class="report-section-title">📊 League Statistics</div>
@@ -1199,8 +1154,6 @@ function displayLeagueReport(data) {
             </div>
         </div>
     `;
-    
-    // Contributors Leaderboard
     html += `
         <div class="report-section">
             <div class="report-section-title">🏆 Contributors Leaderboard</div>
@@ -1255,8 +1208,6 @@ function displayLeagueReport(data) {
     }
     
     html += '</div></div>';
-    
-    // Teams Standings
     html += `
         <div class="report-section">
             <div class="report-section-title">🎯 Teams Standings</div>
@@ -1303,15 +1254,11 @@ function displayLeagueReport(data) {
     }
     
     html += '</div></div>';
-    
-    // Top Performers
     html += `
         <div class="report-section">
             <div class="report-section-title">⭐ Top Performers</div>
             <div class="grid-3">
     `;
-    
-    // Top Players by Points
     html += `
         <div class="data-card">
             <div class="data-card-header">
@@ -1343,8 +1290,6 @@ function displayLeagueReport(data) {
     }
     
     html += '</div></div>';
-    
-    // Top Scorers
     html += `
         <div class="data-card">
             <div class="data-card-header">
@@ -1376,8 +1321,6 @@ function displayLeagueReport(data) {
     }
     
     html += '</div></div>';
-    
-    // Top Assisters
     html += `
         <div class="data-card">
             <div class="data-card-header">
@@ -1410,8 +1353,6 @@ function displayLeagueReport(data) {
     
     html += '</div></div>';
     html += '</div></div>';
-    
-    // League Configuration
     html += `
         <div class="report-section">
             <div class="report-section-title">⚙️ League Configuration</div>
@@ -1453,7 +1394,6 @@ function displayLeagueReport(data) {
         </div>
     `;
     
-    // League Roles Points Configuration
     if (data.league_roles) {
         html += `
             <div class="report-section">
@@ -1533,14 +1473,10 @@ function backToSelection() {
     
     document.querySelectorAll('.tab')[1].classList.add('active');
     document.getElementById('league-selection').classList.add('active');
-    
-    // Disable the report tab
     const reportTab = document.getElementById('leagueReportTab');
     reportTab.disabled = true;
     reportTab.classList.add('tab-disabled');
     reportTab.onclick = null;
-    
-    // Hide export button
     document.getElementById('exportBtn').style.display = 'none';
     
     currentTab = 'league-selection';
@@ -1660,8 +1596,6 @@ function exportLeagueReport() {
     reportText += `${'-'.repeat(50)}\n`;
     reportText += `Report generated on: ${new Date().toLocaleString()}\n`;
     reportText += `Fantazina Admin Panel\n`;
-    
-    // Create and download file
     const blob = new Blob([reportText], { type: 'text/plain' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');

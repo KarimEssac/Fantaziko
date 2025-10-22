@@ -123,7 +123,6 @@ if (isset($_GET['ajax'])) {
     }
 }
 
-// Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
         try {
@@ -137,8 +136,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_POST['league_id'],
                         $_POST['team_name']
                     ]);
-                    
-                    // Update num_of_teams in leagues table
                     $stmt = $pdo->prepare("
                         UPDATE leagues 
                         SET num_of_teams = (SELECT COUNT(*) FROM league_teams WHERE league_id = ?)
@@ -164,16 +161,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     break;
                     
                 case 'delete_team':
-                    // Get league_id before deleting
                     $stmt = $pdo->prepare("SELECT league_id FROM league_teams WHERE id = ?");
                     $stmt->execute([$_POST['team_id']]);
                     $league_id = $stmt->fetch(PDO::FETCH_ASSOC)['league_id'];
-                    
-                    // Delete team
                     $stmt = $pdo->prepare("DELETE FROM league_teams WHERE id = ?");
                     $stmt->execute([$_POST['team_id']]);
-                    
-                    // Update num_of_teams in leagues table
                     $stmt = $pdo->prepare("
                         UPDATE leagues 
                         SET num_of_teams = (SELECT COUNT(*) FROM league_teams WHERE league_id = ?)
@@ -190,7 +182,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Fetch all leagues for selection
 $leagues_search = isset($_GET['leagues_search']) ? $_GET['leagues_search'] : '';
 $leagues_where = '';
 $leagues_params = [];
@@ -733,7 +724,6 @@ include 'includes/sidebar.php';
     <button class="tab tab-disabled" id="playersTab" disabled>👥 Team Players</button>
 </div>
     
-    <!-- League Selection Tab -->
     <div id="league-selection" class="tab-content active">
         <div class="search-bar-standalone">
             <div class="search-input-wrapper">
@@ -995,10 +985,7 @@ include 'includes/sidebar.php';
         
         event.target.classList.add('active');
         document.getElementById(tabName).classList.add('active');
-        
         currentTab = tabName;
-        
-        // Load data if league is selected and switching to teams tab
         if (currentLeagueId && tabName === 'teams-management') {
             loadLeagueTeams(currentLeagueId);
         }
@@ -1017,14 +1004,11 @@ include 'includes/sidebar.php';
     
     function selectLeague(leagueId) {
         currentLeagueId = leagueId;
-        
-        // Enable the teams tab
         const teamsTab = document.getElementById('teamsTab');
         teamsTab.disabled = false;
         teamsTab.classList.remove('tab-disabled');
         teamsTab.onclick = function() { switchTab('teams-management'); };
-        
-        // Load league info
+
         fetch('?ajax=get_league_info&league_id=' + leagueId)
             .then(response => response.json())
             .then(data => {
@@ -1032,19 +1016,13 @@ include 'includes/sidebar.php';
                     alert('Error: ' + data.error);
                     return;
                 }
-                
-                // Update league header
                 updateLeagueHeader(data);
-                
-                // Switch to teams tab and load data
                 document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
                 document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
                 
                 teamsTab.classList.add('active');
                 document.getElementById('teams-management').classList.add('active');
                 currentTab = 'teams-management';
-                
-                // Show add team button
                 document.getElementById('addTeamBtn').style.display = 'inline-flex';
                 
                 loadLeagueTeams(leagueId);
@@ -1077,23 +1055,16 @@ include 'includes/sidebar.php';
     function backToSelection() {
     document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-    
     document.querySelectorAll('.tab')[0].classList.add('active');
     document.getElementById('league-selection').classList.add('active');
-    
-    // Disable the teams tab
     const teamsTab = document.getElementById('teamsTab');
     teamsTab.disabled = true;
     teamsTab.classList.add('tab-disabled');
     teamsTab.onclick = null;
-    
-    // Disable the players tab
     const playersTab = document.getElementById('playersTab');
     playersTab.disabled = true;
     playersTab.classList.add('tab-disabled');
     playersTab.onclick = null;
-    
-    // Hide add team button
     document.getElementById('addTeamBtn').style.display = 'none';
     
     currentTab = 'league-selection';
@@ -1108,8 +1079,6 @@ include 'includes/sidebar.php';
     const teamsTab = document.getElementById('teamsTab');
     teamsTab.classList.add('active');
     document.getElementById('teams-management').classList.add('active');
-    
-    // Keep the players tab visible but disabled
     const playersTab = document.getElementById('playersTab');
     playersTab.disabled = true;
     playersTab.classList.add('tab-disabled');
@@ -1118,7 +1087,6 @@ include 'includes/sidebar.php';
     currentTab = 'teams-management';
     currentTeamId = null;
     
-    // Reload teams
     if (currentLeagueId) {
         loadLeagueTeams(currentLeagueId);
     }
@@ -1186,19 +1154,13 @@ include 'includes/sidebar.php';
                     alert('Error: ' + data.error);
                     return;
                 }
-                
-                // Update team header
                 updateTeamHeader(data);
-                
-                // Switch to players tab
                 document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
                 document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
                 
                 playersTab.classList.add('active');
                 document.getElementById('team-players').classList.add('active');
                 currentTab = 'team-players';
-                
-                // Show/hide price column based on league system
                 const priceHeader = document.getElementById('priceHeader');
                 if (data.league_system === 'Budget') {
                     priceHeader.style.display = 'table-cell';
@@ -1321,7 +1283,6 @@ include 'includes/sidebar.php';
         document.getElementById('deleteTeamModal').classList.remove('active');
     }
     
-    // Close modals when clicking outside
     window.onclick = function(event) {
         const addModal = document.getElementById('addTeamModal');
         const editModal = document.getElementById('editTeamModal');
