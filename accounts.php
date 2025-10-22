@@ -7,7 +7,7 @@ if (isset($_GET['ajax'])) {
     
     if ($_GET['ajax'] === 'get_account' && isset($_GET['id'])) {
         try {
-            $stmt = $pdo->prepare("SELECT id, username, email, phone_number, admin, activated, created_at FROM accounts WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT id, username, email, phone_number, activated, created_at FROM accounts WHERE id = ?");
             $stmt->execute([$_GET['id']]);
             $account = $stmt->fetch(PDO::FETCH_ASSOC);
             
@@ -27,7 +27,7 @@ if (isset($_GET['ajax'])) {
             $id = $_GET['id'];
             
             // Get account basic info
-            $stmt = $pdo->prepare("SELECT id, username, email, phone_number, admin, activated, created_at FROM accounts WHERE id = ?");
+            $stmt = $pdo->prepare("SELECT id, username, email, phone_number, activated, created_at FROM accounts WHERE id = ?");
             $stmt->execute([$id]);
             $account = $stmt->fetch(PDO::FETCH_ASSOC);
             
@@ -74,14 +74,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             switch ($_POST['action']) {
                 case 'create':
-                    $stmt = $pdo->prepare("INSERT INTO accounts (username, email, password, phone_number, admin, activated) VALUES (?, ?, ?, ?, ?, ?)");
+                    $stmt = $pdo->prepare("INSERT INTO accounts (username, email, password, phone_number, activated) VALUES (?, ?, ?, ?, ?, ?)");
                     $hashedPassword = password_hash($_POST['password'], PASSWORD_DEFAULT);
                     $stmt->execute([
                         $_POST['username'],
                         $_POST['email'],
                         $hashedPassword,
                         $_POST['phone_number'] ?: null,
-                        0, // admin is always 0 now
                         isset($_POST['activated']) ? 1 : 0
                     ]);
                     $success_message = "Account created successfully!";

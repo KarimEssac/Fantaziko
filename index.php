@@ -390,9 +390,6 @@ include 'includes/sidebar.php';
                                         <?php else: ?>
                                             <span class="badge badge-warning">Pending</span>
                                         <?php endif; ?>
-                                        <?php if ($account['admin']): ?>
-                                            <span class="badge badge-info">Admin</span>
-                                        <?php endif; ?>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>

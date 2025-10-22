@@ -4,7 +4,6 @@
     email VARCHAR(100) NOT NULL,
     password VARCHAR(255) NOT NULL,
     phone_number VARCHAR(20) UNIQUE,
-    admin BOOLEAN DEFAULT 0,
     activated BOOLEAN DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
