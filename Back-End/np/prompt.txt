@@ -1,9 +1,3 @@
 following the same style, theme, colors and font of the rest of the project, I want you to create "match-points.php" page, study the db structure I attached inside the db.txt to know the exact db structure implemented, then make all function necessary to administrate the match points.
 To be clear, this page should administrate the points distributed to all players in a certain league, for example, if a player scored a goal, and his role is mid, we should see how much the midfielder score is in the table for this league, and it should be added, we can see all the history of a player in this page and so on
 Send the entire file
-
-in index.php, the sign up button goes to sign up.php, I want you to create this file 'signup.php'
-1- this page, should have the same theme, font, style, and colors of the rest of the project, and should be visually very pleasing
-2- this project include two modes, create them, also it stores the mode the user selects, so you need to know that information to decide which theme he will enter into
-3- send the file as an artifact
-send the entire signup.php
