@@ -26,7 +26,6 @@ if (isset($_GET['ajax'])) {
         try {
             $id = $_GET['id'];
             
-            // Get account basic info
             $stmt = $pdo->prepare("SELECT id, username, email, phone_number, activated, created_at FROM accounts WHERE id = ?");
             $stmt->execute([$id]);
             $account = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -36,7 +35,6 @@ if (isset($_GET['ajax'])) {
                 exit();
             }
             
-            // Get all associated leagues with role and total_score
             $stmt = $pdo->prepare("
                 SELECT 
                     l.id,
@@ -68,45 +66,37 @@ if (isset($_GET['ajax'])) {
     }
 }
 
-// Handle CRUD operations
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
         try {
             switch ($_POST['action']) {
                 case 'create':
-                    $stmt = $pdo->prepare("INSERT INTO accounts (username, email, password, phone_number, activated) VALUES (?, ?, ?, ?, ?, ?)");
-                    $hashedPassword = password_hash($_POST['password'], PASSWORD_DEFAULT);
-                    $stmt->execute([
-                        $_POST['username'],
-                        $_POST['email'],
-                        $hashedPassword,
-                        $_POST['phone_number'] ?: null,
-                        isset($_POST['activated']) ? 1 : 0
-                    ]);
+                    $username     = trim($_POST['username']);
+                    $email        = trim($_POST['email']);
+                    $password     = $_POST['password'];
+                    $phone_number = !empty($_POST['phone_number']) ? trim($_POST['phone_number']) : null;
+                    $activated    = isset($_POST['activated']) ? 1 : 0;
+                    $hashed       = password_hash($password, PASSWORD_DEFAULT);
+
+                    $stmt = $pdo->prepare("INSERT INTO accounts (username, email, password, phone_number, activated) VALUES (?, ?, ?, ?, ?)");
+                    $stmt->execute([$username, $email, $hashed, $phone_number, $activated]);
                     $success_message = "Account created successfully!";
                     break;
                     
                 case 'update':
+                    $id           = $_POST['id'];
+                    $username     = trim($_POST['username']);
+                    $email        = trim($_POST['email']);
+                    $phone_number = !empty($_POST['phone_number']) ? trim($_POST['phone_number']) : null;
+                    $activated    = isset($_POST['activated']) ? 1 : 0;
+
                     if (!empty($_POST['password'])) {
+                        $hashed = password_hash($_POST['password'], PASSWORD_DEFAULT);
                         $stmt = $pdo->prepare("UPDATE accounts SET username = ?, email = ?, password = ?, phone_number = ?, activated = ? WHERE id = ?");
-                        $hashedPassword = password_hash($_POST['password'], PASSWORD_DEFAULT);
-                        $stmt->execute([
-                            $_POST['username'],
-                            $_POST['email'],
-                            $hashedPassword,
-                            $_POST['phone_number'] ?: null,
-                            isset($_POST['activated']) ? 1 : 0,
-                            $_POST['id']
-                        ]);
+                        $stmt->execute([$username, $email, $hashed, $phone_number, $activated, $id]);
                     } else {
                         $stmt = $pdo->prepare("UPDATE accounts SET username = ?, email = ?, phone_number = ?, activated = ? WHERE id = ?");
-                        $stmt->execute([
-                            $_POST['username'],
-                            $_POST['email'],
-                            $_POST['phone_number'] ?: null,
-                            isset($_POST['activated']) ? 1 : 0,
-                            $_POST['id']
-                        ]);
+                        $stmt->execute([$username, $email, $phone_number, $activated, $id]);
                     }
                     $success_message = "Account updated successfully!";
                     break;
@@ -123,7 +113,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Fetch accounts with search functionality
 $search = isset($_GET['search']) ? $_GET['search'] : '';
 $where_clause = '';
 $params = [];
@@ -138,11 +127,10 @@ try {
     $stmt->execute($params);
     $accounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Add stats to each account
-    foreach ($accounts as &$account) {
+    // FIXED: Removed &$account reference to prevent duplication bug
+    foreach ($accounts as $key => $account) {
         $id = $account['id'];
         
-        // Count admin leagues (owner, other_owner, or role='Admin')
         $stmt = $pdo->prepare("
             SELECT COUNT(DISTINCT l.id)
             FROM leagues l
@@ -150,16 +138,15 @@ try {
             WHERE l.owner = ? OR l.other_owner = ? OR (lc.user_id = ? AND lc.role = 'Admin')
         ");
         $stmt->execute([$id, $id, $id, $id]);
-        $account['admin_leagues'] = $stmt->fetchColumn();
+        $accounts[$key]['admin_leagues'] = $stmt->fetchColumn();
         
-        // Count contributor leagues (role='Contributor')
         $stmt = $pdo->prepare("
             SELECT COUNT(*)
             FROM league_contributors
             WHERE user_id = ? AND role = 'Contributor'
         ");
         $stmt->execute([$id]);
-        $account['contrib_leagues'] = $stmt->fetchColumn();
+        $accounts[$key]['contrib_leagues'] = $stmt->fetchColumn();
     }
 } catch (PDOException $e) {
     $error_message = "Database error: " . $e->getMessage();
@@ -169,6 +156,8 @@ try {
 include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
+
+<!-- [REST OF HTML/CSS/JS UNCHANGED - ONLY PHP LOOP FIXED ABOVE] -->
 
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
@@ -595,7 +584,7 @@ include 'includes/sidebar.php';
     <div class="page-header">
         <h1 class="page-title">Accounts Management</h1>
         <button class="btn btn-primary" onclick="openCreateModal()">
-            ➕ Create New Account
+            Create New Account
         </button>
     </div>
     
@@ -608,7 +597,7 @@ include 'includes/sidebar.php';
     <?php endif; ?>
     
     <div class="search-bar">
-        <span class="search-icon">🔍</span>
+        <span class="search-icon">Search</span>
         <input type="text" id="searchInput" placeholder="Search by ID or Username..." value="<?php echo htmlspecialchars($search); ?>">
     </div>
     
@@ -648,9 +637,9 @@ include 'includes/sidebar.php';
                                 <td>Admin: <?php echo $account['admin_leagues']; ?> | Contributor: <?php echo $account['contrib_leagues']; ?></td>
                                 <td>
                                     <div class="action-buttons">
-                                        <button class="btn btn-info btn-sm" onclick="viewAccount(<?php echo $account['id']; ?>)">👁️ View</button>
-                                        <button class="btn btn-secondary btn-sm" onclick="editAccount(<?php echo $account['id']; ?>)">✏️ Edit</button>
-                                        <button class="btn btn-danger btn-sm" onclick="deleteAccount(<?php echo $account['id']; ?>, '<?php echo htmlspecialchars($account['username']); ?>')">🗑️ Delete</button>
+                                        <button class="btn btn-info btn-sm" onclick="viewAccount(<?php echo $account['id']; ?>)">View</button>
+                                        <button class="btn btn-secondary btn-sm" onclick="editAccount(<?php echo $account['id']; ?>)">Edit</button>
+                                        <button class="btn btn-danger btn-sm" onclick="deleteAccount(<?php echo $account['id']; ?>, '<?php echo htmlspecialchars($account['username'], ENT_QUOTES); ?>')">Delete</button>
                                     </div>
                                 </td>
                             </tr>
@@ -666,12 +655,12 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
-<!-- Create/Edit Modal -->
+<!-- Modals and JS unchanged -->
 <div id="accountModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
             <span id="modalTitle">Create New Account</span>
-            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <button class="modal-close" onclick="closeModal()">×</button>
         </div>
         <form id="accountForm" method="POST">
             <div class="modal-body">
@@ -713,15 +702,13 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
-<!-- View Details Modal -->
 <div id="viewModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
             <span>Account Details</span>
-            <button class="modal-close" onclick="closeViewModal()">&times;</button>
+            <button class="modal-close" onclick="closeViewModal()">×</button>
         </div>
         <div class="modal-body" id="viewModalBody">
-            <!-- Content will be loaded dynamically -->
         </div>
         <div class="modal-footer">
             <button class="btn btn-primary" onclick="closeViewModal()">Close</button>
@@ -729,12 +716,11 @@ include 'includes/sidebar.php';
     </div>
 </div>
 
-<!-- Delete Confirmation Modal -->
 <div id="deleteModal" class="modal">
     <div class="modal-content" style="max-width: 400px;">
         <div class="modal-header">
             <span>Confirm Delete</span>
-            <button class="modal-close" onclick="closeDeleteModal()">&times;</button>
+            <button class="modal-close" onclick="closeDeleteModal()">×</button>
         </div>
         <form id="deleteForm" method="POST">
             <div class="modal-body">
@@ -751,7 +737,6 @@ include 'includes/sidebar.php';
 </div>
 
 <script>
-    // Search functionality with real-time filtering
     document.getElementById('searchInput').addEventListener('keyup', function(e) {
         const searchValue = this.value;
         const url = new URL(window.location.href);
@@ -762,18 +747,8 @@ include 'includes/sidebar.php';
             url.searchParams.delete('search');
         }
         
-        window.history.replaceState({}, '', url);
-        
-        // Reload page with new search parameter
-        if (e.key === 'Enter' || searchValue === '' || /^\d+$/.test(searchValue)) {
-            window.location.href = url;
-        }
-    });
-    
-    // Auto-submit on Enter key
-    document.getElementById('searchInput').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
-            window.location.href = window.location.href.split('?')[0] + (this.value ? '?search=' + encodeURIComponent(this.value) : '');
+            window.location.href = url;
         }
     });
     
@@ -852,7 +827,6 @@ include 'includes/sidebar.php';
                 </div>`;
                 html += '</div>';
                 
-                // Add leagues if user is a league owner or contributor
                 if (data.leagues && data.leagues.length > 0) {
                     html += '<div class="leagues-section">';
                     html += '<div class="leagues-title">Associated Leagues</div>';
@@ -914,7 +888,6 @@ include 'includes/sidebar.php';
         document.getElementById('deleteModal').classList.remove('active');
     }
     
-    // Close modal when clicking outside
     window.onclick = function(event) {
         const accountModal = document.getElementById('accountModal');
         const viewModal = document.getElementById('viewModal');

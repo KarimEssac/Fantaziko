@@ -23,6 +23,7 @@
     num_of_players INT DEFAULT 0,
     num_of_teams INT DEFAULT 0,
     system ENUM('Budget', 'No Limits') DEFAULT 'No Limits',
+    positions ENUM('positions', 'positionless') DEFAULT 'positions'
     triple_captain INT DEFAULT 0,
     bench_boost INT DEFAULT 0,
     wild_card INT DEFAULT 0,

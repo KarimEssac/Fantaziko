@@ -897,10 +897,10 @@ include 'includes/sidebar.php';
                                     <div class="action-buttons">
                                         <button class="btn btn-info btn-sm" onclick="viewLeague(<?php echo $league['id']; ?>)">👁️ View</button>
                                         <button class="btn btn-secondary btn-sm" onclick="editLeague(<?php echo $league['id']; ?>)">✏️ Edit</button>
-                                        <button class="btn btn-warning btn-sm" onclick="toggleActivation(<?php echo $league['id']; ?>, '<?php echo htmlspecialchars($league['name']); ?>', 1)">
+                                        <button class="btn btn-warning btn-sm" onclick="toggleActivation(<?php echo $league['id']; ?>, '<?php echo htmlspecialchars(addslashes($league['name'])); ?>', 1)">
                                             ⏸️ Deactivate
                                         </button>
-                                        <button class="btn btn-danger btn-sm" onclick="deleteLeague(<?php echo $league['id']; ?>, '<?php echo htmlspecialchars($league['name']); ?>')">🗑️ Delete</button>
+                                        <button class="btn btn-danger btn-sm" onclick="deleteLeague(<?php echo $league['id']; ?>, '<?php echo htmlspecialchars(addslashes($league['name'])); ?>')">🗑️ Delete</button>
                                     </div>
                                 </td>
                             </tr>
@@ -932,57 +932,51 @@ include 'includes/sidebar.php';
             <table class="data-table pending">
                 <thead>
                     <tr>
-                        <th>
-                            ID</th>
-<th>League Name</th>
-<th>Owner</th>
-<th>Owner Email</th>
-<th>System</th>
-<th>Price</th>
-<th>Created At</th>
-<th>Actions</th>
-</tr>
-</thead>
-<tbody>
-<?php if (!empty($pending_leagues)): ?>
-<?php foreach ($pending_leagues as $pending): ?>
-<tr>
-<td><?php echo htmlspecialchars($pending['id']); ?></td>
-<td>
-<strong><?php echo htmlspecialchars($pending['name']); ?></strong>
-<?php if ($pending['other_owner_name']): ?>
-<br><small style="color: #999;">Co-Owner: <?php echo htmlspecialchars($pending['other_owner_name']); ?></small>
-<?php endif; ?>
-</td>
-<td><?php echo htmlspecialchars($pending['owner_name'] ?? 'N/A'); ?></td>
-<td><?php echo htmlspecialchars($pending['owner_email'] ?? 'N/A'); ?></td>
-<td>
-<span class="badge <?php echo $pending['system'] === 'Budget' ? 'badge-primary' : 'badge-secondary'; ?>">
-<?php echo htmlspecialchars($pending['system']); ?>
-</span>
-</td>
-<td>EGP <?php echo number_format($pending['price'], 2); ?></td>
-<td><?php echo date('Y-m-d H:i', strtotime($pending['created_at'])); ?></td>
-<td>
-<div class="action-buttons">
-<button class="btn btn-info btn-sm" onclick="viewLeague(<?php echo $pending['id']; ?>)">👁️ View</button>
-<button class="btn btn-success btn-sm" onclick="activatePending(<?php echo $pending['id']; ?>, '<?php echo htmlspecialchars($pending['name']); ?>')">
-✅ Activate
-</button>
-<button class="btn btn-danger btn-sm" onclick="deleteLeague(<?php echo $pending['id']; ?>, '<?php echo htmlspecialchars($pending['name']); ?>')">🗑️ Delete</button>
-</div>
-</td>
-</tr>
-<?php endforeach; ?>
-<?php else: ?>
-<tr>
-<td colspan="8" style="text-align: center; color: #999; padding: 30px;">No pending league requests</td>
-</tr>
-<?php endif; ?>
-</tbody>
-</table>
-</div>
-</div>
+                        <th>ID</th>
+                        <th>League Name</th>
+                        <th>Owner</th>
+                        <th>Email</th>
+                        <th>System</th>
+                        <th>Price</th>
+                        <th>Created At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (!empty($pending_leagues)): ?>
+                        <?php foreach ($pending_leagues as $pending): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($pending['id']); ?></td>
+                                <td><?php echo htmlspecialchars($pending['name']); ?></td>
+                                <td><?php echo htmlspecialchars($pending['owner_name'] ?? 'N/A'); ?></td>
+                                <td><?php echo htmlspecialchars($pending['owner_email'] ?? 'N/A'); ?></td>
+                                <td>
+                                    <span class="badge <?php echo $pending['system'] === 'Budget' ? 'badge-primary' : 'badge-secondary'; ?>">
+                                        <?php echo htmlspecialchars($pending['system']); ?>
+                                    </span>
+                                </td>
+                                <td>EGP <?php echo number_format($pending['price'], 2); ?></td>
+                                <td><?php echo date('Y-m-d H:i', strtotime($pending['created_at'])); ?></td>
+                                <td>
+                                    <div class="action-buttons">
+                                        <button class="btn btn-info btn-sm" onclick="viewLeague(<?php echo $pending['id']; ?>)">👁️ View</button>
+                                        <button class="btn btn-success btn-sm" onclick="activatePending(<?php echo $pending['id']; ?>, '<?php echo htmlspecialchars(addslashes($pending['name'])); ?>')">
+                                            ✅ Activate
+                                        </button>
+                                        <button class="btn btn-danger btn-sm" onclick="deleteLeague(<?php echo $pending['id']; ?>, '<?php echo htmlspecialchars(addslashes($pending['name'])); ?>')">🗑️ Delete</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: #999; padding: 30px;">No pending league requests</td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 <!-- Create/Edit Modal -->
 <div id="leagueModal" class="modal">

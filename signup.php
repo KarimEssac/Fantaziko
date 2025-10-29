@@ -19,7 +19,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
+    $country_code = trim($_POST['country_code'] ?? '');
     $phone_number = trim($_POST['phone_number'] ?? '');
+    
+    // Combine country code and phone number
+    $full_phone_number = $country_code . $phone_number;
 
     if (empty($username)) {
         $errors[] = "Username is required";
@@ -35,8 +39,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errors[] = "Invalid email format";
     }
     
+    if (empty($country_code)) {
+        $errors[] = "Please select your country";
+    }
+    
     if (empty($phone_number)) {
         $errors[] = "Phone number is required";
+    } elseif (!preg_match('/^[0-9]+$/', $phone_number)) {
+        $errors[] = "Phone number must contain only digits";
     }
     
     if (empty($password)) {
@@ -65,31 +75,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if (!empty($phone_number) && empty($errors)) {
+    if (!empty($full_phone_number) && empty($errors)) {
         $stmt = $pdo->prepare("SELECT id FROM accounts WHERE phone_number = ?");
-        $stmt->execute([$phone_number]);
+        $stmt->execute([$full_phone_number]);
         if ($stmt->fetch()) {
             $errors[] = "Phone number already registered";
         }
     }
 
     if (empty($errors)) {
-        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+    $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+    
+    try {
+        $stmt = $pdo->prepare("INSERT INTO accounts (username, email, password, phone_number, activated) VALUES (?, ?, ?, ?, 1)");
+        $stmt->execute([$username, $email, $hashed_password, $full_phone_number]);
+        $user_id = $pdo->lastInsertId();
+        $_SESSION['user_id'] = $user_id;
+        $_SESSION['username'] = $username;
+        $_SESSION['email'] = $email;
         
-        try {
-            $stmt = $pdo->prepare("INSERT INTO accounts (username, email, password, phone_number, activated) VALUES (?, ?, ?, ?, 1)");
-            $stmt->execute([$username, $email, $hashed_password, $phone_number]);
-            $user_id = $pdo->lastInsertId();
-            $_SESSION['user_id'] = $user_id;
-            $_SESSION['username'] = $username;
-            $_SESSION['email'] = $email;
-            header("Location: main.php");
+        // Check if there's a pending league token from join_league.php
+        if (isset($_SESSION['pending_league_token'])) {
+            $token = $_SESSION['pending_league_token'];
+            header("Location: join_league.php?token=" . urlencode($token));
             exit();
-            
-        } catch (PDOException $e) {
-            $errors[] = "An error occurred while creating your account. Please try again.";
         }
+        
+        header("Location: main.php");
+        exit();
+        
+    } catch (PDOException $e) {
+        $errors[] = "An error occurred while creating your account. Please try again.";
     }
+}
 }
 ?>
 <!DOCTYPE html>
@@ -99,6 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <title>Sign Up - Fantazina</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/18.2.1/css/intlTelInput.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
         
@@ -346,6 +365,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         .form-group {
             margin-bottom: 1.5rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Reduce z-index for form groups after phone input */
+        .form-group.phone-group {
+            z-index: 100;
+        }
+
+        .form-group.phone-group ~ .form-group {
+            z-index: 1;
         }
         
         .form-group label {
@@ -374,6 +404,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-size: 1.1rem;
             transition: all 0.3s ease;
             z-index: 2;
+            pointer-events: none;
+        }
+
+        /* Hide icons inside phone input wrapper */
+        .phone-input-wrapper i.fas {
+            display: none !important;
+            visibility: hidden !important;
+        }
+
+        .phone-input-wrapper .input-wrapper::before,
+        .phone-input-wrapper .input-wrapper::after {
+            display: none !important;
         }
         
         body.dark-mode .input-wrapper i {
@@ -445,6 +487,134 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         body.dark-mode .form-group input::placeholder {
             color: rgba(255, 255, 255, 0.5);
             font-weight: 300;
+        }
+
+        /* Phone Input Styling */
+        .iti {
+            width: 100%;
+            display: block;
+            position: relative;
+        }
+
+        .iti__flag-container {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            z-index: 3;
+        }
+
+        .iti__selected-flag {
+            padding: 0 0 0 1.2rem;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            background: transparent;
+            border: none;
+            border-right: 2px solid var(--input-border);
+            transition: all 0.3s ease;
+        }
+
+        body.dark-mode .iti__selected-flag {
+            border-right-color: rgba(10, 146, 215, 0.3);
+        }
+
+        .iti__selected-flag:hover,
+        .iti__selected-flag:focus {
+            background: transparent;
+            border-right-color: var(--gradient-end);
+        }
+
+        .iti__arrow {
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-top: 5px solid var(--text-secondary);
+            margin-left: 6px;
+        }
+
+        body.dark-mode .iti__arrow {
+            border-top-color: rgba(10, 146, 215, 0.7);
+        }
+
+        .iti__country-list {
+            background: var(--card-bg);
+            border: 2px solid var(--input-border);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            max-height: 250px;
+            overflow-y: auto;
+            margin-top: 5px;
+            z-index: 10000 !important;
+            position: fixed !important;
+        }
+
+        body.dark-mode .iti__country-list {
+            background: linear-gradient(135deg, rgba(20, 30, 48, 0.98), rgba(15, 25, 40, 0.98));
+            border-color: rgba(10, 146, 215, 0.3);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(20px);
+        }
+
+        .iti__country {
+            padding: 8px 12px;
+            transition: all 0.2s ease;
+        }
+
+        .iti__country:hover {
+            background: var(--input-focus);
+        }
+
+        body.dark-mode .iti__country:hover {
+            background: rgba(10, 146, 215, 0.2);
+        }
+
+        .iti__country.iti__highlight {
+            background: var(--input-focus);
+        }
+
+        body.dark-mode .iti__country.iti__highlight {
+            background: rgba(10, 146, 215, 0.3);
+        }
+
+        .iti__country-name,
+        .iti__dial-code {
+            color: var(--text-primary);
+        }
+
+        #phone_number {
+            padding-left: 100px !important;
+        }
+
+        .phone-input-wrapper {
+            position: relative;
+            z-index: 1;
+        }
+
+        .phone-validation-message {
+            display: none;
+            margin-top: 0.5rem;
+            padding: 0.6rem 0.8rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            transition: all 0.3s ease;
+        }
+
+        .phone-validation-message.error {
+            display: block;
+            background: var(--error-bg);
+            border: 1px solid var(--error-border);
+            color: var(--error-text);
+        }
+
+        .phone-validation-message.success {
+            display: block;
+            background: var(--success-bg);
+            border: 1px solid var(--success-border);
+            color: var(--success-text);
+        }
+
+        .phone-validation-message i {
+            margin-right: 0.4rem;
         }
         
         .error-messages {
@@ -535,13 +705,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-top: 1rem;
         }
         
-        .submit-btn:hover {
+        .submit-btn:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 10px 30px rgba(10, 146, 215, 0.4);
         }
         
         .submit-btn:active {
             transform: translateY(0);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
         
         .signup-footer {
@@ -709,6 +884,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 left: 1rem;
                 font-size: 1rem;
             }
+
+            #phone_number {
+        padding-left: 90px !important;
+    }
             
             .submit-btn {
                 padding: 1rem;
@@ -780,6 +959,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 left: 0.9rem;
                 font-size: 0.95rem;
             }
+
+            .iti__selected-flag {
+        padding: 0 0 0 0.9rem;
+    }
+    
+    #phone_number {
+        padding-left: 100px !important;
+    }
             
             .submit-btn {
                 padding: 0.9rem;
@@ -905,10 +1092,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
                 
-                <div class="form-group">
+                <div class="form-group phone-group">
                     <label for="phone_number">Phone Number <span class="required">*</span></label>
-                    <div class="input-wrapper">
-                        <i class="fas fa-phone"></i>
+                    <div class="input-wrapper phone-input-wrapper">
                         <input 
                             type="tel" 
                             id="phone_number" 
@@ -917,7 +1103,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             required
                             value="<?php echo htmlspecialchars($_POST['phone_number'] ?? ''); ?>"
                         >
+                        <input type="hidden" id="country_code" name="country_code" value="">
                     </div>
+                    <div class="phone-validation-message" id="phoneValidation"></div>
                 </div>
                 
                 <div class="form-group">
@@ -956,7 +1144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
                 
-                <button type="submit" class="submit-btn">
+                <button type="submit" class="submit-btn" id="submitBtn">
                     <i class="fas fa-user-plus"></i> Create Account
                 </button>
             </form>
@@ -967,6 +1155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/18.2.1/js/intlTelInput.min.js"></script>
     <script>
         (function() {
             const savedTheme = localStorage.getItem('theme');
@@ -1012,6 +1201,128 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         });
 
+        // Initialize intl-tel-input
+        const phoneInputField = document.querySelector("#phone_number");
+        const phoneInput = window.intlTelInput(phoneInputField, {
+            initialCountry: "eg",
+            preferredCountries: ["eg", "sa", "ae", "us", "gb"],
+            separateDialCode: true,
+            utilsScript: "https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/18.2.1/js/utils.js",
+            autoPlaceholder: "aggressive",
+            formatOnDisplay: true,
+            nationalMode: false,
+            customPlaceholder: function(selectedCountryPlaceholder, selectedCountryData) {
+                return selectedCountryPlaceholder;
+            },
+            i18n: {
+                searchPlaceholder: "Search countries"
+            }
+        });
+
+        // Remove local country names, keep only English
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                const countryNames = document.querySelectorAll('.iti__country-name');
+                countryNames.forEach(function(nameElement) {
+                    const text = nameElement.textContent;
+                    // Remove anything in parentheses (which contains local names)
+                    const englishOnly = text.replace(/\s*\([^)]*\)/g, '').trim();
+                    nameElement.textContent = englishOnly;
+                });
+            }, 100);
+        });
+
+        // Also update when dropdown opens
+        phoneInputField.addEventListener('open:countrydropdown', function() {
+            setTimeout(function() {
+                const countryNames = document.querySelectorAll('.iti__country-name');
+                countryNames.forEach(function(nameElement) {
+                    const text = nameElement.textContent;
+                    const englishOnly = text.replace(/\s*\([^)]*\)/g, '').trim();
+                    nameElement.textContent = englishOnly;
+                });
+            }, 10);
+        });
+
+        const phoneValidation = document.getElementById('phoneValidation');
+        const countryCodeInput = document.getElementById('country_code');
+        const submitBtn = document.getElementById('submitBtn');
+
+        // Update country code hidden input when country changes
+        phoneInputField.addEventListener('countrychange', function() {
+            const selectedCountryData = phoneInput.getSelectedCountryData();
+            countryCodeInput.value = '+' + selectedCountryData.dialCode;
+            
+            // Clear validation message when country changes
+            phoneValidation.className = 'phone-validation-message';
+            phoneValidation.innerHTML = '';
+            
+            // Revalidate if there's a number entered
+            if (phoneInputField.value.trim()) {
+                validatePhoneNumber();
+            }
+        });
+
+        // Set initial country code
+        const selectedCountryData = phoneInput.getSelectedCountryData();
+        countryCodeInput.value = '+' + selectedCountryData.dialCode;
+
+        // Phone number validation function
+        function validatePhoneNumber() {
+            const phoneNumber = phoneInputField.value.trim();
+            
+            if (!phoneNumber) {
+                phoneValidation.className = 'phone-validation-message';
+                phoneValidation.innerHTML = '';
+                submitBtn.disabled = false;
+                return false;
+            }
+
+            if (phoneInput.isValidNumber()) {
+                phoneValidation.className = 'phone-validation-message success';
+                phoneValidation.innerHTML = '<i class="fas fa-check-circle"></i> Valid phone number';
+                submitBtn.disabled = false;
+                return true;
+            } else {
+                const errorCode = phoneInput.getValidationError();
+                let errorMessage = 'Invalid phone number';
+                
+                switch(errorCode) {
+                    case 1:
+                        errorMessage = 'Invalid country code';
+                        break;
+                    case 2:
+                        errorMessage = 'Phone number is too short';
+                        break;
+                    case 3:
+                        errorMessage = 'Phone number is too long';
+                        break;
+                    case 4:
+                        errorMessage = 'Invalid phone number format';
+                        break;
+                    default:
+                        errorMessage = 'Invalid phone number for selected country';
+                }
+                
+                phoneValidation.className = 'phone-validation-message error';
+                phoneValidation.innerHTML = '<i class="fas fa-exclamation-circle"></i> ' + errorMessage;
+                submitBtn.disabled = true;
+                return false;
+            }
+        }
+
+        // Validate on input
+        phoneInputField.addEventListener('input', function() {
+            // Remove non-numeric characters except leading +
+            let value = this.value;
+            this.value = value.replace(/[^\d]/g, '');
+            
+            validatePhoneNumber();
+        });
+
+        // Validate on blur
+        phoneInputField.addEventListener('blur', validatePhoneNumber);
+
         const passwordInput = document.getElementById('password');
         const passwordStrength = document.getElementById('passwordStrength');
         const strengthFill = document.getElementById('strengthFill');
@@ -1030,11 +1341,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             let strength = 0;
             if (password.length >= 8) strength++;
             if (password.length >= 12) strength++;
-
             if (/\d/.test(password)) strength++;
-
             if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength++;
-
             if (/[^A-Za-z0-9]/.test(password)) strength++;
 
             strengthFill.className = 'strength-fill';
@@ -1060,6 +1368,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         signupForm.addEventListener('submit', function(e) {
             const password = passwordInput.value;
             const confirmPassword = confirmPasswordInput.value;
+            
+            // Validate phone number
+            if (!validatePhoneNumber()) {
+                e.preventDefault();
+                alert('Please enter a valid phone number for the selected country');
+                phoneInputField.focus();
+                return false;
+            }
+
+            // Update country code before submission
+            const selectedCountryData = phoneInput.getSelectedCountryData();
+            countryCodeInput.value = '+' + selectedCountryData.dialCode;
             
             if (password !== confirmPassword) {
                 e.preventDefault();
@@ -1090,30 +1410,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 this.style.borderColor = 'var(--input-border)';
             }
         });
+
         const usernameInput = document.getElementById('username');
         usernameInput.addEventListener('input', function() {
             this.value = this.value.replace(/[^a-zA-Z0-9_]/g, '');
         });
-        const phoneInput = document.getElementById('phone_number');
-        phoneInput.addEventListener('input', function() {
-            let value = this.value;
-            if (value.startsWith('+')) {
-                this.value = '+' + value.slice(1).replace(/[^0-9]/g, '');
-            } else {
-                this.value = value.replace(/[^0-9]/g, '');
-            }
-        });
+
         document.addEventListener('DOMContentLoaded', function() {
             usernameInput.focus();
         });
+
         document.getElementById('loginLink').addEventListener('click', function(e) {
             e.preventDefault();
             sessionStorage.setItem('openLoginModal', 'true');
             window.location.href = 'index.php';
         });
+
         if (window.history.replaceState) {
             window.history.replaceState(null, null, window.location.href);
         }
+
         document.querySelectorAll('input').forEach(input => {
             input.addEventListener('focus', function() {
                 setTimeout(() => {

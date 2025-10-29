@@ -124,18 +124,6 @@ if (isset($_SESSION['admin_id'])) {
             box-shadow: 0 4px 12px rgba(10, 146, 215, 0.3);
         }
         
-        .header-profile-avatar {
-            width: 35px;
-            height: 35px;
-            border-radius: 50%;
-            background: #FFFFFF;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            color: #1D60AC;
-            font-size: 14px;
-        }
         
         .header-profile-info {
             display: flex;
@@ -231,7 +219,6 @@ if (isset($_SESSION['admin_id'])) {
     <div class="header-right">
         
         <div class="header-profile">
-    <div class="header-profile-avatar"><?php echo htmlspecialchars($initials); ?></div>
     <div class="header-profile-info">
         <span class="header-profile-name"><?php echo htmlspecialchars($admin_username); ?></span>
         <span class="header-profile-role">Administrator</span>
