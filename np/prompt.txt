@@ -7,3 +7,15 @@ in index.php, the sign up button goes to sign up.php, I want you to create this 
 2- this project include two modes, create them, also it stores the mode the user selects, so you need to know that information to decide which theme he will enter into
 3- send the file as an artifact
 send the entire signup.php
+
+
+in sidebar.php, the teams button goes to manage_players.php, I want you to create this file 'manage_players.php'
+I've attached players.php, which is the players management page in our admin's dashboard (contains different styles and color ignore the style just study how it works and for what)
+in this page the owner of the league should be able to select players in teams and manage them, and also see their stats, like what's existed in player.php (study it carefully)
+user should first select a team from the list of all the teams existed, then see the list of all players, (show their position if the positions column is 'positions' not 'positionless', and their price if system column is 'Budget')
+make the user able to create new players in this page
+1- this page, should have the same theme, font, style, and colors of the rest of the project, and should be visually very pleasing
+2- this project include two modes, create them, also it stores the mode the user selects, so you need to know that information to decide which theme he will enter into
+3- follow the same restrictions that exists in league_settings.php, as it is very important to deny anyone who doesn't have access to the page
+4- send the file as an artifact
+send the entire manage_players.php

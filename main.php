@@ -1700,7 +1700,7 @@ transition: opacity 0.5s ease, visibility 0.5s ease;
                 <a href="league_dashboard.php?id=<?php echo $league['id']; ?>" class="btn btn-gradient">
                     <i class="fas fa-sign-in-alt"></i> Enter
                 </a>
-                <a href="league_settings.php?id=<?php echo $league['id']; ?>" class="btn btn-outline">
+                <a href="league_owner/league_settings.php?id=<?php echo $league['id']; ?>" class="btn btn-outline">
                     <i class="fas fa-cog"></i> Manage
                 </a>
             </div>
