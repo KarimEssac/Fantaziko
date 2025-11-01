@@ -10,8 +10,6 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 $success_message = '';
 $error_message = '';
-
-// Fetch user data
 $stmt = $pdo->prepare("SELECT * FROM accounts WHERE id = ?");
 $stmt->execute([$user_id]);
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -22,31 +20,25 @@ if (!$user) {
     exit();
 }
 
-// Handle profile update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     
     if ($_POST['action'] === 'update_profile') {
         $username = trim($_POST['username']);
         $email = trim($_POST['email']);
         $phone_number = trim($_POST['phone_number']);
-        
-        // Validate inputs
         if (empty($username) || empty($email)) {
             $error_message = "Username and email are required.";
         } else {
-            // Check if username is taken by another user
             $stmt = $pdo->prepare("SELECT id FROM accounts WHERE username = ? AND id != ?");
             $stmt->execute([$username, $user_id]);
             if ($stmt->fetch()) {
                 $error_message = "Username is already taken.";
             } else {
-                // Check if email is taken by another user
                 $stmt = $pdo->prepare("SELECT id FROM accounts WHERE email = ? AND id != ?");
                 $stmt->execute([$email, $user_id]);
                 if ($stmt->fetch()) {
                     $error_message = "Email is already in use.";
                 } else {
-                    // Check if phone number is taken by another user (if provided)
                     if (!empty($phone_number)) {
                         $stmt = $pdo->prepare("SELECT id FROM accounts WHERE phone_number = ? AND id != ?");
                         $stmt->execute([$phone_number, $user_id]);
@@ -56,14 +48,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                     
                     if (empty($error_message)) {
-                        // Update user information
                         $stmt = $pdo->prepare("UPDATE accounts SET username = ?, email = ?, phone_number = ? WHERE id = ?");
                         if ($stmt->execute([$username, $email, $phone_number ?: null, $user_id])) {
                             $_SESSION['username'] = $username;
                             $_SESSION['email'] = $email;
                             $success_message = "Profile updated successfully!";
-                            
-                            // Refresh user data
                             $stmt = $pdo->prepare("SELECT * FROM accounts WHERE id = ?");
                             $stmt->execute([$user_id]);
                             $user = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -108,7 +97,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         } elseif (!password_verify($password, $user['password'])) {
             $error_message = "Incorrect password.";
         } else {
-            // Delete user account (cascading deletes will handle related records)
             $stmt = $pdo->prepare("DELETE FROM accounts WHERE id = ?");
             if ($stmt->execute([$user_id])) {
                 session_destroy();
@@ -121,7 +109,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 }
 
-// Get user statistics
 $stmt = $pdo->prepare("
     SELECT COUNT(DISTINCT l.id) as leagues_owned
     FROM leagues l
@@ -1160,7 +1147,6 @@ $points_stats = $stmt->fetch(PDO::FETCH_ASSOC);
     </div>
 
     <script>
-        // Theme handling
         (function() {
             const savedTheme = localStorage.getItem('theme');
             const body = document.body;
@@ -1171,8 +1157,6 @@ $points_stats = $stmt->fetch(PDO::FETCH_ASSOC);
                 body.classList.add('dark-mode');
             }
         })();
-
-        // Loading spinner
         window.addEventListener('load', function() {
             const loadingSpinner = document.getElementById('loadingSpinner');
             setTimeout(() => {
@@ -1180,7 +1164,6 @@ $points_stats = $stmt->fetch(PDO::FETCH_ASSOC);
             }, 500);
         });
 
-        // Theme toggle
         const themeToggle = document.getElementById('themeToggle');
         const body = document.body;
         const themeIcon = themeToggle.querySelector('i');
@@ -1207,7 +1190,6 @@ $points_stats = $stmt->fetch(PDO::FETCH_ASSOC);
             }
         });
 
-        // Delete account modal
         const deleteAccountBtn = document.getElementById('deleteAccountBtn');
         const deleteModal = document.getElementById('deleteModal');
         const cancelDelete = document.getElementById('cancelDelete');
@@ -1234,8 +1216,6 @@ $points_stats = $stmt->fetch(PDO::FETCH_ASSOC);
                 document.getElementById('delete_password').value = '';
             }
         });
-
-        // Auto-hide alerts after 5 seconds
         const alerts = document.querySelectorAll('.alert');
         alerts.forEach(alert => {
             setTimeout(() => {
@@ -1246,7 +1226,6 @@ $points_stats = $stmt->fetch(PDO::FETCH_ASSOC);
             }, 5000);
         });
 
-        // Password validation
         const newPasswordInput = document.getElementById('new_password');
         const confirmPasswordInput = document.getElementById('confirm_password');
         

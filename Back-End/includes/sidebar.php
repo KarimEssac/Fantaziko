@@ -1,6 +1,3 @@
-<?php
-// includes/sidebar.php
-?>
 
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
@@ -242,6 +239,14 @@
             <a href="leaderboards.php" class="menu-item">
                 <span class="menu-icon">🥇</span>
                 <span class="menu-text">Leaderboards</span>
+            </a>
+        </div>
+        
+        <div class="menu-section">
+            <div class="menu-section-title">Communication</div>
+            <a href="support.php" class="menu-item">
+                <span class="menu-icon">💬</span>
+                <span class="menu-text">Support Tickets</span>
             </a>
         </div>
         

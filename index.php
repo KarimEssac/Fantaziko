@@ -1,10 +1,16 @@
 <?php
 session_start();
+if (isset($_SESSION['user_id'])) {
+    header("Location: main.php");
+    exit();
+}
+
 require_once 'config/db.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']) && isset($_POST['password'])) {
     $username_or_email = trim($_POST['username']);
     $password = $_POST['password'];
+    $remember_me = isset($_POST['remember_me']);
 
     $stmt = $pdo->prepare("SELECT id, username, email, password, activated FROM accounts WHERE (username = ? OR email = ?) LIMIT 1");
     $stmt->execute([$username_or_email, $username_or_email]);
@@ -18,6 +24,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']) && isset(
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['username'] = $user['username'];
                 $_SESSION['email'] = $user['email'];
+                if ($remember_me) {
+                    ini_set('session.gc_maxlifetime', 2592000);
+                    session_set_cookie_params(2592000);
+                }
+                
                 header("Location: main.php");
                 exit();
             } else {
@@ -58,6 +69,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']) && isset(
             --nav-bg: rgba(255, 255, 255, 0.95);
             --gradient-start: #1D60AC;
             --gradient-end: #0A92D7;
+            --modal-bg: #ffffff;
+            --modal-border: rgba(0, 0, 0, 0.15);
+            --input-bg: #f8f9fc;
+            --input-border: rgba(0, 0, 0, 0.15);
         }
         
         body.dark-mode {
@@ -69,6 +84,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']) && isset(
             --card-bg: rgba(255, 255, 255, 0.03);
             --card-hover: rgba(255, 255, 255, 0.08);
             --nav-bg: rgba(0, 0, 0, 0.95);
+            --modal-bg: rgba(20, 20, 20, 0.95);
+            --modal-border: rgba(255, 255, 255, 0.1);
+            --input-bg: rgba(255, 255, 255, 0.05);
+            --input-border: rgba(255, 255, 255, 0.1);
         }
         
         body {
@@ -250,9 +269,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']) && isset(
         }
         
         .modal {
-            background: var(--card-bg);
+            background: var(--modal-bg);
             backdrop-filter: blur(20px);
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--modal-border);
             border-radius: 20px;
             padding: 3rem;
             max-width: 450px;
@@ -260,10 +279,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']) && isset(
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             animation: slideUp 0.3s ease;
             position: relative;
-        }
-        
-        body.dark-mode .modal {
-            background: rgba(20, 20, 20, 0.95);
         }
         
         .modal-header {
@@ -307,9 +322,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']) && isset(
         .form-group input {
             width: 100%;
             padding: 0.9rem 1.2rem;
-            border: 2px solid var(--border-color);
+            border: 2px solid var(--input-border);
             border-radius: 12px;
-            background: var(--bg-primary);
+            background: var(--input-bg);
             color: var(--text-primary);
             font-family: 'Roboto', sans-serif;
             font-size: 1rem;
@@ -320,6 +335,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']) && isset(
             outline: none;
             border-color: var(--gradient-end);
             box-shadow: 0 0 0 3px rgba(10, 146, 215, 0.1);
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            cursor: pointer;
+            accent-color: var(--gradient-end);
+        }
+        
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+            font-weight: 400;
+            font-size: 0.95rem;
+            color: var(--text-primary);
         }
         
         .error-message {
@@ -1129,6 +1165,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username']) && isset(
                 <div class="form-group">
                     <label for="password">Password</label>
                     <input type="password" id="password" name="password" placeholder="Enter your password" required>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="remember_me" name="remember_me" checked>
+                    <label for="remember_me">Remember me for 30 days</label>
                 </div>
                 <div class="forgot-password">
                     <a href="password_retrieve.php">Forgot Your Password?</a>

@@ -2,7 +2,6 @@
 session_start();
 require_once '../config/db.php';
 
-// Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     header("Location: ../index.php");
     exit();
@@ -11,7 +10,6 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 $username = $_SESSION['username'];
 
-// Get league ID from URL
 $league_id = $_GET['id'] ?? '';
 
 if (empty($league_id)) {
@@ -19,7 +17,6 @@ if (empty($league_id)) {
     exit();
 }
 
-// Get league by ID
 $stmt = $pdo->prepare("
     SELECT l.*, lt.token 
     FROM leagues l
@@ -29,25 +26,19 @@ $stmt = $pdo->prepare("
 $stmt->execute([$league_id]);
 $league = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// Check if league doesn't exist
 if (!$league) {
     $league_not_found = true;
     $not_owner = false;
     $not_activated = false;
 } else {
     $league_not_found = false;
-    
-    // Get the league token for navigation
-    $league_token = $league['token'] ?? '';
 
-    // Check if user is the owner
+    $league_token = $league['token'] ?? '';
     if ($league['owner'] != $user_id && $league['other_owner'] != $user_id) {
         $not_owner = true;
         $not_activated = false;
     } else {
         $not_owner = false;
-        
-        // Check if league is not activated
         if (!$league['activated']) {
             $not_activated = true;
         } else {
@@ -55,14 +46,10 @@ if (!$league) {
         }
     }
     
-    // Only fetch league data if user has access and league is activated
     if (!$not_owner && !$not_activated) {
-        // Get league roles/points
         $stmt = $pdo->prepare("SELECT * FROM league_roles WHERE league_id = ?");
         $stmt->execute([$league_id]);
         $roles = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        // If no roles exist, create default
         if (!$roles) {
             $stmt = $pdo->prepare("
                 INSERT INTO league_roles (
@@ -74,8 +61,6 @@ if (!$league) {
                 ) VALUES (?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
             ");
             $stmt->execute([$league_id]);
-            
-            // Fetch again
             $stmt = $pdo->prepare("SELECT * FROM league_roles WHERE league_id = ?");
             $stmt->execute([$league_id]);
             $roles = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -83,11 +68,9 @@ if (!$league) {
     }
 }
 
-// Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !$league_not_found) {
     try {
         if ($league['positions'] === 'positionless') {
-            // For positionless mode
             $universal_score = intval($_POST['universal_score']);
             $universal_assist = intval($_POST['universal_assist']);
             $universal_clean_sheet = intval($_POST['universal_clean_sheet']);
@@ -95,8 +78,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             $miss_penalty = intval($_POST['miss_penalty']);
             $yellow_card = intval($_POST['yellow_card']);
             $red_card = intval($_POST['red_card']);
-            
-            // Set all roles to universal values
             $gk_score = $universal_score;
             $gk_assist = $universal_assist;
             $gk_clean_sheet = $universal_clean_sheet;
@@ -108,7 +89,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             $for_score = $universal_score;
             $for_assist = $universal_assist;
         } else {
-            // For positions mode
             $gk_save_penalty = intval($_POST['gk_save_penalty']);
             $gk_score = intval($_POST['gk_score']);
             $gk_assist = intval($_POST['gk_assist']);
@@ -124,8 +104,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             $yellow_card = intval($_POST['yellow_card']);
             $red_card = intval($_POST['red_card']);
         }
-        
-        // Update league roles
         $stmt = $pdo->prepare("
             UPDATE league_roles SET 
                 gk_save_penalty = ?, gk_score = ?, gk_assist = ?, gk_clean_sheet = ?,
@@ -145,8 +123,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
         ]);
         
         $success_message = "Points rules updated successfully!";
-        
-        // Refresh roles data
         $stmt = $pdo->prepare("SELECT * FROM league_roles WHERE league_id = ?");
         $stmt->execute([$league_id]);
         $roles = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -240,8 +216,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             pointer-events: none;
             z-index: 0;
         }
-
-        /* Main Content */
         .main-content {
             margin-left: 280px;
             margin-top: 70px;
@@ -250,8 +224,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             position: relative;
             z-index: 1;
         }
-
-        /* Not Owner Page */
         .not-owner-container {
             display: flex;
             align-items: center;
@@ -293,7 +265,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             line-height: 1.6;
         }
 
-        /* League Not Activated */
         .not-activated-card {
             background: var(--card-bg);
             border: 2px solid var(--warning);
@@ -321,7 +292,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             margin-bottom: 1rem;
         }
 
-        /* League Not Found */
         .not-found-card {
             background: var(--card-bg);
             border: 2px solid var(--text-secondary);
@@ -349,8 +319,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             color: var(--text-primary);
             margin-bottom: 1rem;
         }
-
-        /* Page Header */
         .page-header {
             margin-bottom: 2rem;
         }
@@ -367,7 +335,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             color: var(--text-secondary);
         }
 
-        /* Alert Messages */
         .alert {
             padding: 1.2rem 1.5rem;
             border-radius: 15px;
@@ -405,7 +372,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             font-size: 1.5rem;
         }
 
-        /* League Info Banner */
         .league-info-banner {
             background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
             border-radius: 20px;
@@ -452,7 +418,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             gap: 0.5rem;
         }
 
-        /* Info Box */
         .info-box {
             background: rgba(10, 146, 215, 0.1);
             border: 1px solid rgba(10, 146, 215, 0.3);
@@ -484,7 +449,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             line-height: 1.6;
         }
 
-        /* Form Container */
         .form-container {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
@@ -499,7 +463,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             border: 1px solid rgba(10, 146, 215, 0.3);
         }
 
-        /* Role Section */
         .role-section {
             background: var(--bg-secondary);
             border-radius: 15px;
@@ -545,7 +508,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             color: var(--text-primary);
         }
 
-        /* Form Grid */
         .form-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -591,8 +553,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             -webkit-appearance: none;
             margin: 0;
         }
-
-        /* Button */
         .btn {
             padding: 0.8rem 2rem;
             border: none;
@@ -632,8 +592,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             padding-top: 2rem;
             border-top: 1px solid var(--border-color);
         }
-
-        /* Quick Actions */
         .quick-actions {
             display: flex;
             gap: 1rem;
@@ -704,9 +662,80 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                 justify-content: center;
             }
         }
+        /* Loading Spinner Overlay */
+        .loading-spinner-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+        
+        .loading-spinner-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+        
+        .spinner-large {
+            width: 80px;
+            height: 80px;
+            border: 6px solid var(--border-color);
+            border-top: 6px solid var(--gradient-end);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            margin-top: 1.5rem;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .loading-logo {
+            margin-bottom: 2rem;
+        }
+        
+        .loading-logo img {
+            height: 80px;
+            width: auto;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.95); }
+        }
+        
+        body.dark-mode .loading-logo img {
+            content: url('../assets/images/logo white outline.png');
+        }
+        
+        body:not(.dark-mode) .loading-logo img {
+            content: url('../assets/images/logo.png');
+        }
     </style>
 </head>
 <body>
+        <!-- Loading Spinner -->
+    <div class="loading-spinner-overlay" id="loadingSpinner">
+        <div class="loading-logo">
+            <img src="../assets/images/logo white outline.png" alt="Fantazina Logo">
+        </div>
+        <div class="spinner-large"></div>
+        <div class="loading-text">Loading Points Rules Management...</div>
+    </div>
     <?php if (!$league_not_found && !$not_owner && !$not_activated): ?>
     <?php include 'includes/sidebar.php'; ?>
     <?php endif; ?>
@@ -820,8 +849,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                     <i class="fas fa-undo"></i> Reset All to Zero
                 </button>
             </div>
-
-            <!-- Form -->
             <form method="POST" id="pointsForm">
                 <?php if ($league['positions'] === 'positionless'): ?>
                     <!-- Positionless Mode -->
@@ -1100,13 +1127,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
     <?php endif; ?>
 
     <script>
-        // Apply Premier League default points
+        window.addEventListener('load', function() {
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            setTimeout(() => {
+                loadingSpinner.classList.add('hidden');
+            }, 500);
+        });
         function applyPremierLeagueDefaults() {
             const isPositionless = <?php echo $league['positions'] === 'positionless' ? 'true' : 'false'; ?>;
             
             if (confirm('This will overwrite all current point values with Premier League defaults. Continue?')) {
                 if (isPositionless) {
-                    // Positionless defaults
                     document.getElementById('universal_score').value = 5;
                     document.getElementById('universal_assist').value = 3;
                     document.getElementById('universal_clean_sheet').value = 4;
@@ -1115,7 +1146,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                     document.getElementById('yellow_card').value = -1;
                     document.getElementById('red_card').value = -3;
                 } else {
-                    // Positions defaults
                     document.getElementById('gk_score').value = 10;
                     document.getElementById('gk_assist').value = 3;
                     document.getElementById('gk_save_penalty').value = 5;
@@ -1135,13 +1165,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                     document.getElementById('yellow_card').value = -1;
                     document.getElementById('red_card').value = -3;
                 }
-                
-                // Show success message
                 showNotification('Premier League defaults applied successfully!', 'success');
             }
         }
 
-        // Reset all points to zero
         function resetAllPoints() {
             const isPositionless = <?php echo $league['positions'] === 'positionless' ? 'true' : 'false'; ?>;
             
@@ -1150,13 +1177,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                 inputs.forEach(input => {
                     input.value = 0;
                 });
-                
-                // Show success message
                 showNotification('All points reset to zero!', 'success');
             }
         }
 
-        // Show notification
         function showNotification(message, type) {
             const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
             const iconClass = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
@@ -1177,14 +1201,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             }, 3000);
         }
 
-        // Form submission handling
         document.getElementById('pointsForm').addEventListener('submit', function(e) {
             const submitBtn = this.querySelector('button[type="submit"]');
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
         });
 
-        // Add slideOut animation
         const style = document.createElement('style');
         style.textContent = `
             @keyframes slideOut {

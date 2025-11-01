@@ -19,3 +19,8 @@ make the user able to create new players in this page
 3- follow the same restrictions that exists in league_settings.php, as it is very important to deny anyone who doesn't have access to the page
 4- send the file as an artifact
 send the entire manage_players.php
+
+
+Note: this project has 2 different categories for each league, 1- is the system 'No Limits' or 'Budget', the budget system prices each player for a price that the owner decides, and each contributor formation should be capped by a certain amount of money, the no limits removes this, you can select any formation that you'd like
+
+the second system is whether the 'positions' is 'positions' or 'positionless', in 'positions' each player has his position and roles (GK, DEF and so on), in 'positionless' no player is assigned to a role, all players share the same score together

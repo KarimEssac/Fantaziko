@@ -21,8 +21,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $confirm_password = $_POST['confirm_password'] ?? '';
     $country_code = trim($_POST['country_code'] ?? '');
     $phone_number = trim($_POST['phone_number'] ?? '');
-    
-    // Combine country code and phone number
     $full_phone_number = $country_code . $phone_number;
 
     if (empty($username)) {
@@ -93,8 +91,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['user_id'] = $user_id;
         $_SESSION['username'] = $username;
         $_SESSION['email'] = $email;
-        
-        // Check if there's a pending league token from join_league.php
         if (isset($_SESSION['pending_league_token'])) {
             $token = $_SESSION['pending_league_token'];
             header("Location: join_league.php?token=" . urlencode($token));
@@ -1201,7 +1197,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         });
 
-        // Initialize intl-tel-input
         const phoneInputField = document.querySelector("#phone_number");
         const phoneInput = window.intlTelInput(phoneInputField, {
             initialCountry: "eg",
@@ -1219,20 +1214,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         });
 
-        // Remove local country names, keep only English
         document.addEventListener('DOMContentLoaded', function() {
             setTimeout(function() {
                 const countryNames = document.querySelectorAll('.iti__country-name');
                 countryNames.forEach(function(nameElement) {
                     const text = nameElement.textContent;
-                    // Remove anything in parentheses (which contains local names)
                     const englishOnly = text.replace(/\s*\([^)]*\)/g, '').trim();
                     nameElement.textContent = englishOnly;
                 });
             }, 100);
         });
 
-        // Also update when dropdown opens
         phoneInputField.addEventListener('open:countrydropdown', function() {
             setTimeout(function() {
                 const countryNames = document.querySelectorAll('.iti__country-name');
@@ -1248,26 +1240,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         const countryCodeInput = document.getElementById('country_code');
         const submitBtn = document.getElementById('submitBtn');
 
-        // Update country code hidden input when country changes
         phoneInputField.addEventListener('countrychange', function() {
             const selectedCountryData = phoneInput.getSelectedCountryData();
             countryCodeInput.value = '+' + selectedCountryData.dialCode;
-            
-            // Clear validation message when country changes
             phoneValidation.className = 'phone-validation-message';
             phoneValidation.innerHTML = '';
-            
-            // Revalidate if there's a number entered
             if (phoneInputField.value.trim()) {
                 validatePhoneNumber();
             }
         });
 
-        // Set initial country code
         const selectedCountryData = phoneInput.getSelectedCountryData();
         countryCodeInput.value = '+' + selectedCountryData.dialCode;
 
-        // Phone number validation function
         function validatePhoneNumber() {
             const phoneNumber = phoneInputField.value.trim();
             
@@ -1311,16 +1296,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // Validate on input
         phoneInputField.addEventListener('input', function() {
-            // Remove non-numeric characters except leading +
             let value = this.value;
             this.value = value.replace(/[^\d]/g, '');
             
             validatePhoneNumber();
         });
 
-        // Validate on blur
         phoneInputField.addEventListener('blur', validatePhoneNumber);
 
         const passwordInput = document.getElementById('password');
@@ -1368,8 +1350,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         signupForm.addEventListener('submit', function(e) {
             const password = passwordInput.value;
             const confirmPassword = confirmPasswordInput.value;
-            
-            // Validate phone number
             if (!validatePhoneNumber()) {
                 e.preventDefault();
                 alert('Please enter a valid phone number for the selected country');
@@ -1377,7 +1357,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 return false;
             }
 
-            // Update country code before submission
             const selectedCountryData = phoneInput.getSelectedCountryData();
             countryCodeInput.value = '+' + selectedCountryData.dialCode;
             

@@ -1,7 +1,3 @@
-<?php
-// league_owner/footer.php
-?>
-
 <style>
     .footer {
         margin-left: 280px;

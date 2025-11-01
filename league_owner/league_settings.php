@@ -1,8 +1,6 @@
 <?php
 session_start();
 require_once '../config/db.php';
-
-// Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     header("Location: ../index.php");
     exit();
@@ -10,8 +8,6 @@ if (!isset($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 $username = $_SESSION['username'];
-
-// Get league ID from URL (coming from main.php)
 $league_id = $_GET['id'] ?? '';
 
 if (empty($league_id)) {
@@ -19,7 +15,6 @@ if (empty($league_id)) {
     exit();
 }
 
-// Get league by ID
 $stmt = $pdo->prepare("
     SELECT l.*, lt.token 
     FROM leagues l
@@ -28,44 +23,29 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$league_id]);
 $league = $stmt->fetch(PDO::FETCH_ASSOC);
-
-// Check if league doesn't exist
 if (!$league) {
     $league_not_found = true;
     $not_owner = false;
     $not_activated = false;
 } else {
     $league_not_found = false;
-    
-    // Get the league token for navigation
     $league_token = $league['token'] ?? '';
-
-    // Check if user is the owner
     if ($league['owner'] != $user_id && $league['other_owner'] != $user_id) {
         $not_owner = true;
         $not_activated = false;
     } else {
         $not_owner = false;
-        
-        // Check if league is not activated
         if (!$league['activated']) {
             $not_activated = true;
         } else {
             $not_activated = false;
         }
     }
-    
-    // Only fetch league data if user has access and league is activated
     if (!$not_owner && !$not_activated) {
-        // Get league statistics
         $league_id = $league['id'];
-
-        // Get total contributors
         $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM league_contributors WHERE league_id = ?");
         $stmt->execute([$league_id]);
         $total_contributors = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
-
-        // Get contributors list (top 5 for display)
         $stmt = $pdo->prepare("
             SELECT a.username, lc.role, lc.total_score
             FROM league_contributors lc
@@ -76,8 +56,6 @@ if (!$league) {
         ");
         $stmt->execute([$league_id]);
         $top_contributors = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // Get ALL contributors for modal
         $stmt = $pdo->prepare("
             SELECT a.username, lc.role, lc.total_score
             FROM league_contributors lc
@@ -87,8 +65,6 @@ if (!$league) {
         ");
         $stmt->execute([$league_id]);
         $all_contributors = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // Get team standings (ALL teams)
         $stmt = $pdo->prepare("
             SELECT team_name, team_score
             FROM league_teams
@@ -97,13 +73,9 @@ if (!$league) {
         ");
         $stmt->execute([$league_id]);
         $team_standings = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // Get total matches played
         $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM matches WHERE league_id = ?");
         $stmt->execute([$league_id]);
         $total_matches = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
-
-        // Get owner info
         $stmt = $pdo->prepare("SELECT username FROM accounts WHERE id = ?");
         $stmt->execute([$league['owner']]);
         $owner_info = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -817,9 +789,79 @@ if (!$league) {
                 grid-template-columns: 1fr;
             }
         }
+        .loading-spinner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+        
+        .loading-spinner.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+        
+        .spinner {
+            width: 80px;
+            height: 80px;
+            border: 6px solid var(--border-color);
+            border-top: 6px solid var(--gradient-end);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            margin-top: 1.5rem;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .loading-logo {
+            margin-bottom: 2rem;
+        }
+        
+        .loading-logo img {
+            height: 80px;
+            width: auto;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.95); }
+        }
+        
+        body.dark-mode .loading-logo img {
+            content: url('../assets/images/logo white outline.png');
+        }
+        
+        body:not(.dark-mode) .loading-logo img {
+            content: url('../assets/images/logo.png');
+        }
     </style>
 </head>
 <body>
+    <div class="loading-spinner" id="loadingSpinner">
+        <div class="loading-logo">
+            <img src="../assets/images/logo white outline.png" alt="Fantazina Logo">
+        </div>
+        <div class="spinner"></div>
+        <div class="loading-text">Loading League Settings...</div>
+    </div>
     <?php if (!$league_not_found && !$not_owner && !$not_activated): ?>
     <?php include 'includes/sidebar.php'; ?>
     <?php endif; ?>
@@ -1068,7 +1110,12 @@ if (!$league) {
     <?php endif; ?>
 
     <script>
-        // Contributors Modal Functions
+        window.addEventListener('load', function() {
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            setTimeout(() => {
+                loadingSpinner.classList.add('hidden');
+            }, 500);
+        });
         function openContributorsModal() {
             const modal = document.getElementById('contributorsModal');
             modal.classList.add('active');
@@ -1081,14 +1128,12 @@ if (!$league) {
             document.body.style.overflow = '';
         }
 
-        // Close modal when clicking overlay
         document.getElementById('contributorsModal').addEventListener('click', function(e) {
             if (e.target === this) {
                 closeContributorsModal();
             }
         });
 
-        // Close modal with Escape key
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 const modal = document.getElementById('contributorsModal');

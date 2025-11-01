@@ -919,9 +919,80 @@ $hide_position = ($league['positions'] === 'positionless');
                 padding: 1.5rem;
             }
         }
+                /* Loading Spinner Overlay */
+        .loading-spinner-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+        
+        .loading-spinner-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+        
+        .spinner-large {
+            width: 80px;
+            height: 80px;
+            border: 6px solid var(--border-color);
+            border-top: 6px solid var(--gradient-end);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            margin-top: 1.5rem;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .loading-logo {
+            margin-bottom: 2rem;
+        }
+        
+        .loading-logo img {
+            height: 80px;
+            width: auto;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.95); }
+        }
+        
+        body.dark-mode .loading-logo img {
+            content: url('../assets/images/logo white outline.png');
+        }
+        
+        body:not(.dark-mode) .loading-logo img {
+            content: url('../assets/images/logo.png');
+        }
     </style>
 </head>
 <body>
+        <!-- Loading Spinner -->
+    <div class="loading-spinner-overlay" id="loadingSpinner">
+        <div class="loading-logo">
+            <img src="../assets/images/logo white outline.png" alt="Fantazina Logo">
+        </div>
+        <div class="spinner-large"></div>
+        <div class="loading-text">Loading Contributors Management...</div>
+    </div>
     <?php if (!$league_not_found && !$not_owner && !$not_activated): ?>
     <?php include 'includes/sidebar.php'; ?>
     <?php endif; ?>
@@ -1147,6 +1218,12 @@ $hide_position = ($league['positions'] === 'positionless');
     </div>
 
     <script>
+        window.addEventListener('load', function() {
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            setTimeout(() => {
+                loadingSpinner.classList.add('hidden');
+            }, 500);
+        });
         function viewTeam(userId, leagueId) {
             const modal = document.getElementById('teamModal');
             const loadingSpinner = document.getElementById('loadingSpinner');

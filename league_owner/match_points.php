@@ -1,8 +1,11 @@
 <?php
 session_start();
 require_once '../config/db.php';
-
-// Check if user is logged in
+$success_message = null;
+if (isset($_SESSION['success_message'])) {
+    $success_message = $_SESSION['success_message'];
+    unset($_SESSION['success_message']);
+}
 if (!isset($_SESSION['user_id'])) {
     header("Location: ../index.php");
     exit();
@@ -10,8 +13,6 @@ if (!isset($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 $username = $_SESSION['username'];
-
-// Get league ID from URL
 $league_id = $_GET['id'] ?? '';
 
 if (empty($league_id)) {
@@ -19,7 +20,6 @@ if (empty($league_id)) {
     exit();
 }
 
-// Get league by ID
 $stmt = $pdo->prepare("
     SELECT l.*, lt.token 
     FROM leagues l
@@ -28,26 +28,18 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$league_id]);
 $league = $stmt->fetch(PDO::FETCH_ASSOC);
-
-// Check if league doesn't exist
 if (!$league) {
     $league_not_found = true;
     $not_owner = false;
     $not_activated = false;
 } else {
     $league_not_found = false;
-    
-    // Get the league token for navigation
     $league_token = $league['token'] ?? '';
-
-    // Check if user is the owner
     if ($league['owner'] != $user_id && $league['other_owner'] != $user_id) {
         $not_owner = true;
         $not_activated = false;
     } else {
         $not_owner = false;
-        
-        // Check if league is not activated
         if (!$league['activated']) {
             $not_activated = true;
         } else {
@@ -56,7 +48,6 @@ if (!$league) {
     }
 }
 
-// Handle AJAX requests
 if (isset($_GET['ajax']) && !$league_not_found && !$not_owner && !$not_activated) {
     header('Content-Type: application/json');
     
@@ -264,7 +255,6 @@ if (isset($_GET['ajax']) && !$league_not_found && !$not_owner && !$not_activated
     }
 }
 
-// Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner && !$not_activated) {
     if (isset($_POST['action'])) {
         try {
@@ -272,12 +262,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                 $pdo->beginTransaction();
                 
                 try {
-                    // Get league roles
                     $stmt = $pdo->prepare("SELECT * FROM league_roles WHERE league_id = ?");
                     $stmt->execute([$league_id]);
                     $roles = $stmt->fetch(PDO::FETCH_ASSOC);
-                    
-                    // Helper function to update player points
                     $updatePlayerPoints = function($player_id, $points) use ($pdo) {
                         if ($player_id && $points != 0) {
                             $stmt = $pdo->prepare("
@@ -288,16 +275,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                             $stmt->execute([$points, $player_id]);
                         }
                     };
-                    
-                    // Helper function to get player role
                     $getPlayerRole = function($player_id) use ($pdo) {
                         if (!$player_id) return null;
                         $stmt = $pdo->prepare("SELECT player_role FROM league_players WHERE player_id = ?");
                         $stmt->execute([$player_id]);
                         return $stmt->fetchColumn();
                     };
-                    
-                    // Calculate points based on role
                     $calculateScorerPoints = function($player_id) use ($roles, $getPlayerRole) {
                         if (!$player_id) return 0;
                         $role = $getPlayerRole($player_id);
@@ -321,8 +304,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                             default: return 0;
                         }
                     };
-                    
-                    // Collect all data from POST
                     $scorers = isset($_POST['scorers']) && is_array($_POST['scorers']) ? array_filter($_POST['scorers']) : [];
                     $assisters = isset($_POST['assisters']) && is_array($_POST['assisters']) ? $_POST['assisters'] : [];
                     $bonus_players = isset($_POST['bonus_players']) && is_array($_POST['bonus_players']) ? array_filter($_POST['bonus_players']) : [];
@@ -333,8 +314,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                     $missed_players = isset($_POST['missed_penalty_players']) && is_array($_POST['missed_penalty_players']) ? $_POST['missed_penalty_players'] : [];
                     $yellow_players = isset($_POST['yellow_card_players']) && is_array($_POST['yellow_card_players']) ? array_filter($_POST['yellow_card_players']) : [];
                     $red_players = isset($_POST['red_card_players']) && is_array($_POST['red_card_players']) ? array_filter($_POST['red_card_players']) : [];
-                    
-                    // Prepare arrays
+
                     $bonus_data = [];
                     foreach ($bonus_players as $idx => $player_id) {
                         $bonus_data[] = [
@@ -360,8 +340,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                             ];
                         }
                     }
-                    
-                    // Calculate maximum number of rows needed
                     $max_rows = max(
                         count($scorers),
                         count($bonus_data),
@@ -376,8 +354,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                     }
                     
                     $entries_added = 0;
-                    
-                    // Create rows
                     for ($row = 0; $row < $max_rows; $row++) {
                         $scorer = isset($scorers[$row]) ? $scorers[$row] : null;
                         $assister = isset($assisters[$row]) && !empty($assisters[$row]) ? $assisters[$row] : null;
@@ -389,13 +365,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                         $missed_player = isset($penalty_data[$row]) ? $penalty_data[$row]['missed_id'] : null;
                         $yellow_player_id = isset($yellow_players[$row]) ? $yellow_players[$row] : null;
                         $red_player_id = isset($red_players[$row]) ? $red_players[$row] : null;
-                        
-                        // Check if row has any data
                         if (!$scorer && !$assister && !$bonus && !$minus && !$saved_gk && !$missed_player && !$yellow_player_id && !$red_player_id) {
                             continue;
                         }
-                        
-                        // Insert the row
                         $stmt = $pdo->prepare("
                             INSERT INTO matches_points (
                                 match_id, scorer, assister, bonus, bonus_points, minus, minus_points,
@@ -418,8 +390,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                             $red_player_id ? 1 : 0,
                             $red_player_id
                         ]);
-                        
-                        // Update player points
+
                         if ($scorer) {
                             $points = $calculateScorerPoints($scorer);
                             $updatePlayerPoints($scorer, $points);
@@ -458,7 +429,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                     }
                     
                     $pdo->commit();
-                    $success_message = "Successfully added {$entries_added} match point entries!";
+                    $stmt = $pdo->prepare("SELECT round FROM matches WHERE match_id = ?");
+                    $stmt->execute([$_POST['match_id']]);
+                    $match_round = $stmt->fetchColumn();
+                    $_SESSION['success_message'] = "Successfully added {$entries_added} match point entries!";
+                    header("Location: ?id={$league_id}&round={$match_round}&match={$_POST['match_id']}");
+                    exit();
                     
                 } catch (Exception $e) {
                     $pdo->rollBack();
@@ -470,7 +446,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                 $pdo->beginTransaction();
                 
                 try {
-                    // Get the point data before deletion
                     $stmt = $pdo->prepare("SELECT * FROM matches_points WHERE id = ?");
                     $stmt->execute([$_POST['point_id']]);
                     $point_data = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -478,13 +453,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                     if (!$point_data) {
                         throw new Exception("Point entry not found.");
                     }
-                    
-                    // Get league roles
+                    $redirect_match_id = $point_data['match_id'];
                     $stmt = $pdo->prepare("SELECT * FROM league_roles WHERE league_id = ?");
                     $stmt->execute([$league_id]);
                     $roles = $stmt->fetch(PDO::FETCH_ASSOC);
-                    
-                    // Helper function to reverse player points
                     $reversePlayerPoints = function($player_id, $points) use ($pdo) {
                         if ($player_id && $points != 0) {
                             $stmt = $pdo->prepare("
@@ -495,8 +467,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                             $stmt->execute([$points, $player_id]);
                         }
                     };
-                    
-                    // Reverse all points
                     if ($point_data['scorer']) {
                         $stmt = $pdo->prepare("SELECT player_role FROM league_players WHERE player_id = ?");
                         $stmt->execute([$point_data['scorer']]);
@@ -548,13 +518,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                     if ($point_data['red_card_player']) {
                         $reversePlayerPoints($point_data['red_card_player'], $roles['red_card']);
                     }
-                    
-                    // Delete the point entry
                     $stmt = $pdo->prepare("DELETE FROM matches_points WHERE id = ?");
                     $stmt->execute([$_POST['point_id']]);
                     
                     $pdo->commit();
-                    $success_message = "Match point deleted successfully!";
+                    $stmt = $pdo->prepare("SELECT round FROM matches WHERE match_id = ?");
+                    $stmt->execute([$redirect_match_id]);
+                    $match_round = $stmt->fetchColumn();
+                    $_SESSION['success_message'] = "Match point deleted successfully!";
+                    header("Location: ?id={$league_id}&round={$match_round}&match={$redirect_match_id}");
+                    exit();
                     
                 } catch (Exception $e) {
                     $pdo->rollBack();
@@ -650,8 +623,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
             pointer-events: none;
             z-index: 0;
         }
-
-        /* Main Content */
         .main-content {
             margin-left: 280px;
             margin-top: 70px;
@@ -660,8 +631,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
             position: relative;
             z-index: 1;
         }
-
-        /* Not Owner/Activated Pages */
         .not-owner-container {
             display: flex;
             align-items: center;
@@ -737,8 +706,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
             margin-bottom: 2rem;
             line-height: 1.6;
         }
-
-        /* Page Header */
         .page-header {
             margin-bottom: 2rem;
             display: flex;
@@ -756,8 +723,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-
-        /* Alert Messages */
         .alert {
             padding: 1.2rem 1.5rem;
             border-radius: 15px;
@@ -788,8 +753,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
             color: var(--error);
             border-color: var(--error);
         }
-
-        /* Selection Cards */
         .selection-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -851,8 +814,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
         body.dark-mode .form-control {
             background: rgba(10, 20, 35, 0.5);
         }
-
-        /* Data Card */
         .data-card {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
@@ -895,8 +856,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
             gap: 1.5rem;
             flex-wrap: wrap;
         }
-
-        /* Table */
         .table-container {
             overflow-x: auto;
         }
@@ -943,7 +902,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
             border-bottom: none;
         }
 
-        /* Badges */
         .badge {
             display: inline-block;
             padding: 0.3rem 0.8rem;
@@ -972,7 +930,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
             color: var(--error);
         }
 
-        /* Buttons */
         .btn {
             padding: 0.8rem 1.5rem;
             border: none;
@@ -1023,8 +980,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
             padding: 0.5rem 1rem;
             font-size: 0.85rem;
         }
-
-        /* Modal */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -1131,8 +1086,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
             justify-content: flex-end;
             gap: 1rem;
         }
-
-        /* Form Sections */
         .form-section {
             margin-bottom: 2rem;
             padding: 1.5rem;
@@ -1257,8 +1210,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
             font-size: 0.9rem;
             line-height: 1.6;
         }
-
-        /* Responsive */
         @media (max-width: 1024px) {
             .main-content {
                 margin-left: 0;
@@ -1291,9 +1242,79 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                 gap: 0.5rem;
             }
         }
+        .loading-spinner-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+        
+        .loading-spinner-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+        
+        .spinner-large {
+            width: 80px;
+            height: 80px;
+            border: 6px solid var(--border-color);
+            border-top: 6px solid var(--gradient-end);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            margin-top: 1.5rem;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .loading-logo {
+            margin-bottom: 2rem;
+        }
+        
+        .loading-logo img {
+            height: 80px;
+            width: auto;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.95); }
+        }
+        
+        body.dark-mode .loading-logo img {
+            content: url('../assets/images/logo white outline.png');
+        }
+        
+        body:not(.dark-mode) .loading-logo img {
+            content: url('../assets/images/logo.png');
+        }
     </style>
 </head>
 <body>
+        <!-- Loading Spinner -->
+    <div class="loading-spinner-overlay" id="loadingSpinner">
+        <div class="loading-logo">
+            <img src="../assets/images/logo white outline.png" alt="Fantazina Logo">
+        </div>
+        <div class="spinner-large"></div>
+        <div class="loading-text">Loading Match Points Management...</div>
+    </div>
     <?php if (!$league_not_found && !$not_owner && !$not_activated): ?>
     <?php include 'includes/sidebar.php'; ?>
     <?php endif; ?>
@@ -1600,6 +1621,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
     <?php endif; ?>
 
     <script>
+        window.addEventListener('load', function() {
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            setTimeout(() => {
+                loadingSpinner.classList.add('hidden');
+            }, 500);
+        });
         let currentMatchId = null;
         let currentMatchScore = { team1: 0, team2: 0 };
         let currentMatchTeams = { team1_id: null, team2_id: null };
@@ -1611,12 +1638,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
         let penaltyCount = 0;
         let yellowCardCount = 0;
         let redCardCount = 0;
-
-        // Load rounds on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            loadRounds();
-            loadLeagueData();
-        });
+document.addEventListener('DOMContentLoaded', function() {
+    loadRounds();
+    loadLeagueData();
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const preselectedRound = urlParams.get('round');
+    const preselectedMatch = urlParams.get('match');
+    
+    if (preselectedRound) {
+        setTimeout(() => {
+            document.getElementById('roundSelect').value = preselectedRound;
+            loadMatches(() => {
+                if (preselectedMatch) {
+                    setTimeout(() => {
+                        document.getElementById('matchSelect').value = preselectedMatch;
+                        loadMatchPoints();
+                    }, 300);
+                }
+            });
+        }, 300);
+    }
+});
 
         function loadRounds() {
             fetch('?ajax=get_rounds&id=<?php echo $league_id; ?>')
@@ -1636,41 +1679,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                 .catch(error => console.error('Error loading rounds:', error));
         }
 
-        function loadMatches() {
-            const roundSelect = document.getElementById('roundSelect');
-            const matchSelect = document.getElementById('matchSelect');
-            const round = roundSelect.value;
+        function loadMatches(callback) {
+    const roundSelect = document.getElementById('roundSelect');
+    const matchSelect = document.getElementById('matchSelect');
+    const round = roundSelect.value;
 
-            if (!round) {
-                matchSelect.disabled = true;
-                matchSelect.innerHTML = '<option value="">-- Select a round first --</option>';
-                document.getElementById('matchPointsSection').style.display = 'none';
-                return;
-            }
+    if (!round) {
+        matchSelect.disabled = true;
+        matchSelect.innerHTML = '<option value="">-- Select a round first --</option>';
+        document.getElementById('matchPointsSection').style.display = 'none';
+        return;
+    }
 
-            matchSelect.disabled = false;
-            matchSelect.innerHTML = '<option value="">Loading...</option>';
+    matchSelect.disabled = false;
+    matchSelect.innerHTML = '<option value="">Loading...</option>';
 
-            fetch(`?ajax=get_matches_by_round&id=<?php echo $league_id; ?>&round=${round}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        matchSelect.innerHTML = '<option value="">-- Select a match --</option>';
-                        data.matches.forEach(match => {
-                            const option = document.createElement('option');
-                            option.value = match.match_id;
-                            option.textContent = `${match.team1_name || 'TBD'} ${match.team1_score}-${match.team2_score} ${match.team2_name || 'TBD'}`;
-                            matchSelect.appendChild(option);
-                        });
-                    } else {
-                        matchSelect.innerHTML = '<option value="">No matches found</option>';
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading matches:', error);
-                    matchSelect.innerHTML = '<option value="">Error loading matches</option>';
+    fetch(`?ajax=get_matches_by_round&id=<?php echo $league_id; ?>&round=${round}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                matchSelect.innerHTML = '<option value="">-- Select a match --</option>';
+                data.matches.forEach(match => {
+                    const option = document.createElement('option');
+                    option.value = match.match_id;
+                    option.textContent = `${match.team1_name || 'TBD'} ${match.team1_score}-${match.team2_score} ${match.team2_name || 'TBD'}`;
+                    matchSelect.appendChild(option);
                 });
-        }
+                
+                if (callback) callback();
+            } else {
+                matchSelect.innerHTML = '<option value="">No matches found</option>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading matches:', error);
+            matchSelect.innerHTML = '<option value="">Error loading matches</option>';
+        });
+}
 
         function loadMatchPoints() {
             const matchSelect = document.getElementById('matchSelect');
@@ -1684,7 +1729,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
             currentMatchId = matchId;
             document.getElementById('matchPointsSection').style.display = 'block';
 
-            // Load match info
             fetch(`?ajax=get_match_info&id=<?php echo $league_id; ?>&match_id=${matchId}`)
                 .then(response => response.json())
                 .then(data => {
@@ -1708,7 +1752,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                     }
                 });
 
-            // Load match points
             const tbody = document.getElementById('pointsTableBody');
             tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: var(--text-secondary);">Loading...</td></tr>';
 
@@ -1797,7 +1840,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
         }
 
         function loadLeagueData() {
-            // Load players
             fetch('?ajax=get_league_players&id=<?php echo $league_id; ?>')
                 .then(response => response.json())
                 .then(data => {
@@ -1805,8 +1847,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                         leaguePlayers = data.players;
                     }
                 });
-
-            // Load roles
             fetch('?ajax=get_league_roles&id=<?php echo $league_id; ?>')
                 .then(response => response.json())
                 .then(data => {
@@ -1831,8 +1871,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
 
             document.getElementById('addPointMatchId').value = currentMatchId;
             resetModalCounters();
-
-            // Load existing points to determine remaining goals
             fetch(`?ajax=get_match_points&id=<?php echo $league_id; ?>&match_id=${currentMatchId}`)
                 .then(response => response.json())
                 .then(data => {
@@ -1862,8 +1900,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                         }
                         addScorerBtn.style.display = 'none';
                     }
-
-                    // Reset other containers
                     document.getElementById('bonusContainer').innerHTML = '<p class="empty-state">No bonus players added</p>';
                     document.getElementById('minusContainer').innerHTML = '<p class="empty-state">No minus players added</p>';
                     document.getElementById('penaltyContainer').innerHTML = '<p class="empty-state">No penalties added</p>';
@@ -1906,11 +1942,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
         }
 
         function getSmartScorerOptions(goalIndex) {
-            // Determine which team should be shown for this goal
             const team1Goals = currentMatchScore.team1;
             const team2Goals = currentMatchScore.team2;
-            
-            // Count how many goals have been recorded for each team
             let team1Recorded = 0;
             let team2Recorded = 0;
             
@@ -1927,20 +1960,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                     }
                 }
             }
-            
-            // Determine which team this goal belongs to
             let targetTeamId = null;
-            
-            // If team1 still has unrecorded goals, prioritize team1
             if (team1Recorded < team1Goals) {
                 targetTeamId = currentMatchTeams.team1_id;
             } 
-            // If team1 is done but team2 has unrecorded goals
             else if (team2Recorded < team2Goals) {
                 targetTeamId = currentMatchTeams.team2_id;
             }
-            
-            // Generate options only for the target team
             let options = '';
             leaguePlayers.forEach(player => {
                 if (targetTeamId && player.team_id == targetTeamId) {
@@ -1993,8 +2019,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                     assisterSelect.value = currentAssister;
                 }
             }
-            
-            // Update subsequent scorer options based on new selection
             updateSubsequentScorerOptions();
         }
 
@@ -2315,8 +2339,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
             document.getElementById('deletePointModal').classList.remove('active');
             document.body.style.overflow = '';
         }
-
-        // Close modals when clicking overlay
         document.getElementById('addPointModal').addEventListener('click', function(e) {
             if (e.target === this) closeAddPointModal();
         });
@@ -2325,7 +2347,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
             if (e.target === this) closeDeletePointModal();
         });
 
-        // Close modals with Escape key
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 if (document.getElementById('addPointModal').classList.contains('active')) {

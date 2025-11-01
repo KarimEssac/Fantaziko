@@ -2,7 +2,6 @@
 session_start();
 require_once '../config/db.php';
 
-// Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     header("Location: ../index.php");
     exit();
@@ -11,7 +10,6 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 $username = $_SESSION['username'];
 
-// Get league ID from URL
 $league_id = $_GET['id'] ?? '';
 
 if (empty($league_id)) {
@@ -19,7 +17,6 @@ if (empty($league_id)) {
     exit();
 }
 
-// Get league by ID
 $stmt = $pdo->prepare("
     SELECT l.*, lt.token 
     FROM leagues l
@@ -29,25 +26,19 @@ $stmt = $pdo->prepare("
 $stmt->execute([$league_id]);
 $league = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// Check if league doesn't exist
 if (!$league) {
     $league_not_found = true;
     $not_owner = false;
     $not_activated = false;
 } else {
     $league_not_found = false;
-    
-    // Get the league token for navigation
     $league_token = $league['token'] ?? '';
 
-    // Check if user is the owner
     if ($league['owner'] != $user_id && $league['other_owner'] != $user_id) {
         $not_owner = true;
         $not_activated = false;
     } else {
         $not_owner = false;
-        
-        // Check if league is not activated
         if (!$league['activated']) {
             $not_activated = true;
         } else {
@@ -56,11 +47,8 @@ if (!$league) {
     }
 }
 
-// Handle AJAX requests - MUST come before any HTML output
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_teams') {
     header('Content-Type: application/json');
-    
-    // Check access permissions
     if ($league_not_found) {
         echo json_encode(['error' => 'League not found']);
         exit();
@@ -97,8 +85,6 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_teams') {
 
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_team' && isset($_GET['team_id'])) {
     header('Content-Type: application/json');
-    
-    // Check access permissions
     if ($league_not_found || $not_owner || $not_activated) {
         echo json_encode(['error' => 'Access denied']);
         exit();
@@ -126,15 +112,12 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_team' && isset($_GET['team_id
 
 if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_standings') {
     header('Content-Type: application/json');
-    
-    // Check access permissions
     if ($league_not_found || $not_owner || $not_activated) {
         echo json_encode(['error' => 'Access denied']);
         exit();
     }
     
     try {
-        // Get all teams with their match statistics
         $stmt = $pdo->prepare("
             SELECT 
                 lt.id,
@@ -188,8 +171,6 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_standings') {
         ");
         $stmt->execute([$league_id]);
         $standings = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Ensure all numeric fields are properly set
         foreach ($standings as &$team) {
             $team['played'] = intval($team['played']);
             $team['won'] = intval($team['won']);
@@ -207,7 +188,6 @@ if (isset($_GET['ajax']) && $_GET['ajax'] === 'get_standings') {
     exit();
 }
 
-// Handle POST requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !$league_not_found) {
     if (isset($_POST['action'])) {
         try {
@@ -221,8 +201,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                         $league_id,
                         $_POST['team_name']
                     ]);
-                    
-                    // Update num_of_teams in leagues table
                     $stmt = $pdo->prepare("
                         UPDATE leagues 
                         SET num_of_teams = (SELECT COUNT(*) FROM league_teams WHERE league_id = ?)
@@ -234,7 +212,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                     break;
                     
                 case 'update_team':
-                    // Verify team belongs to this league
                     $stmt = $pdo->prepare("SELECT league_id FROM league_teams WHERE id = ?");
                     $stmt->execute([$_POST['team_id']]);
                     $team_league = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -257,7 +234,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                     break;
                     
                 case 'delete_team':
-                    // Verify team belongs to this league
                     $stmt = $pdo->prepare("SELECT league_id FROM league_teams WHERE id = ?");
                     $stmt->execute([$_POST['team_id']]);
                     $team_league = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -265,8 +241,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                     if ($team_league && $team_league['league_id'] == $league_id) {
                         $stmt = $pdo->prepare("DELETE FROM league_teams WHERE id = ?");
                         $stmt->execute([$_POST['team_id']]);
-                        
-                        // Update num_of_teams in leagues table
                         $stmt = $pdo->prepare("
                             UPDATE leagues 
                             SET num_of_teams = (SELECT COUNT(*) FROM league_teams WHERE league_id = ?)
@@ -370,7 +344,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             z-index: 0;
         }
 
-        /* Main Content */
         .main-content {
             margin-left: 280px;
             margin-top: 70px;
@@ -380,7 +353,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             z-index: 1;
         }
 
-        /* Not Owner/Activated Pages */
         .not-owner-container {
             display: flex;
             align-items: center;
@@ -477,7 +449,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             margin-bottom: 1rem;
         }
 
-        /* Page Header */
         .page-header {
             margin-bottom: 2rem;
             display: flex;
@@ -597,7 +568,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             background: rgba(239, 68, 68, 0.2);
         }
 
-        /* Stats Grid */
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -672,7 +642,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             font-weight: 500;
         }
 
-        /* Teams Grid */
         .teams-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -871,7 +840,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             color: white;
             padding: 1.5rem 2rem;
             display: flex;
-            justify-content: space-between;
+            justify-content:space-between;
             align-items: center;
         }
 
@@ -1034,6 +1003,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             to { transform: rotate(360deg); }
         }
 
+        /* Loading Spinner Overlay */
+        .loading-spinner-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+        
+        .loading-spinner-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+        
+        .spinner-large {
+            width: 80px;
+            height: 80px;
+            border: 6px solid var(--border-color);
+            border-top: 6px solid var(--gradient-end);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        .loading-text {
+            margin-top: 1.5rem;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .loading-logo {
+            margin-bottom: 2rem;
+        }
+        
+        .loading-logo img {
+            height: 80px;
+            width: auto;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.95); }
+        }
+        
+        body.dark-mode .loading-logo img {
+            content: url('../assets/images/logo white outline.png');
+        }
+        
+        body:not(.dark-mode) .loading-logo img {
+            content: url('../assets/images/logo.png');
+        }
+
         /* Standings Table */
         .standings-card {
             background: var(--card-bg);
@@ -1188,7 +1217,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             color: var(--text-primary);
         }
 
-        /* Responsive */
         @media (max-width: 1024px) {
             .main-content {
                 margin-left: 0;
@@ -1242,6 +1270,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
     </style>
 </head>
 <body>
+    <!-- Loading Spinner -->
+    <div class="loading-spinner-overlay" id="loadingSpinner">
+        <div class="loading-logo">
+            <img src="../assets/images/logo white outline.png" alt="Fantazina Logo">
+        </div>
+        <div class="spinner-large"></div>
+        <div class="loading-text">Loading Teams Management...</div>
+    </div>
+
     <?php if (!$league_not_found && !$not_owner && !$not_activated): ?>
     <?php include 'includes/sidebar.php'; ?>
     <?php include 'includes/header.php'; ?>
@@ -1582,7 +1619,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
     </div>
 
     <script>
-        // Load teams on page load
+        window.addEventListener('load', function() {
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            setTimeout(() => {
+                loadingSpinner.classList.add('hidden');
+            }, 500);
+        });
+
         document.addEventListener('DOMContentLoaded', function() {
             <?php if (!$league_not_found && !$not_owner && !$not_activated): ?>
             loadTeams();
@@ -1601,7 +1644,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                     return response.json();
                 })
                 .then(data => {
-                    console.log('Teams data:', data); // Debug log
+                    console.log('Teams data:', data); 
                     
                     if (data.error) {
                         showError(data.error);
@@ -1628,7 +1671,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                     return response.json();
                 })
                 .then(data => {
-                    console.log('Standings data:', data); // Debug log
+                    console.log('Standings data:', data); 
                     
                     if (data.error) {
                         showStandingsError(data.error);
@@ -1663,7 +1706,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                 const position = index + 1;
                 const positionClass = position <= 3 ? 'top-3' : '';
                 const goalsFor = parseInt(team.goals_for) || 0;
-                const goalsAgainst = parseInt(team.goals_against) || 0;
+                const goalsAgainst= parseInt(team.goals_against) || 0;
                 const goalDiff = goalsFor - goalsAgainst;
                 const gdClass = goalDiff > 0 ? 'gd-positive' : goalDiff < 0 ? 'gd-negative' : 'gd-neutral';
                 const gdSign = goalDiff > 0 ? '+' : '';
@@ -1804,7 +1847,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                     return response.json();
                 })
                 .then(data => {
-                    console.log('Team data:', data); // Debug log
+                    console.log('Team data:', data); 
                     
                     if (data.error) {
                         alert('Error: ' + data.error);
@@ -1862,7 +1905,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             return text.replace(/[&<>"']/g, m => map[m]);
         }
 
-        // Close modals when clicking outside
         document.querySelectorAll('.modal-overlay').forEach(modal => {
             modal.addEventListener('click', function(e) {
                 if (e.target === this) {
@@ -1871,8 +1913,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                 }
             });
         });
-
-        // Close modals with Escape key
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 document.querySelectorAll('.modal-overlay.active').forEach(modal => {
@@ -1881,8 +1921,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                 });
             }
         });
-
-        // Reload teams after form submission
         document.getElementById('addTeamForm').addEventListener('submit', function() {
             setTimeout(() => {
                 loadTeams();

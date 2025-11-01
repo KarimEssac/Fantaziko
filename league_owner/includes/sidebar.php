@@ -1,5 +1,4 @@
 <?php
-// league_owner/sidebar.php
 $current_page = basename($_SERVER['PHP_SELF']);
 $league_id = $_GET['id'] ?? '';
 ?>
@@ -245,13 +244,19 @@ $league_id = $_GET['id'] ?? '';
                 <span class="menu-text">Statistics</span>
             </a>
         </div>
-        
+        <div class="menu-section">
+            <div class="menu-section-title">Help</div>
+            <a href="support.php?id=<?php echo $league_id; ?>" 
+               class="menu-item <?php echo $current_page === 'support.php' ? 'active' : ''; ?>">
+                <span class="menu-icon"><i class="fas fa-life-ring"></i></span>
+                <span class="menu-text">Support</span>
+            </a>
+        </div>
 
     </nav>
 </aside>
 
 <script>
-    // Handle active menu item based on current page
     document.addEventListener('DOMContentLoaded', function() {
         const currentPath = window.location.pathname.split('/').pop();
         const menuItems = document.querySelectorAll('.menu-item');

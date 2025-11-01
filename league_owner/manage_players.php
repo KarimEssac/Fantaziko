@@ -2,7 +2,6 @@
 session_start();
 require_once '../config/db.php';
 
-// Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     header("Location: ../index.php");
     exit();
@@ -10,8 +9,6 @@ if (!isset($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 $username = $_SESSION['username'];
-
-// Get league ID from URL
 $league_id = $_GET['id'] ?? '';
 
 if (empty($league_id)) {
@@ -19,7 +16,6 @@ if (empty($league_id)) {
     exit();
 }
 
-// Get league by ID
 $stmt = $pdo->prepare("
     SELECT l.*, lt.token 
     FROM leagues l
@@ -28,8 +24,6 @@ $stmt = $pdo->prepare("
 ");
 $stmt->execute([$league_id]);
 $league = $stmt->fetch(PDO::FETCH_ASSOC);
-
-// Check if league doesn't exist
 if (!$league) {
     $league_not_found = true;
     $not_owner = false;
@@ -37,15 +31,11 @@ if (!$league) {
 } else {
     $league_not_found = false;
     $league_token = $league['token'] ?? '';
-
-    // Check if user is the owner
     if ($league['owner'] != $user_id && $league['other_owner'] != $user_id) {
         $not_owner = true;
         $not_activated = false;
     } else {
         $not_owner = false;
-        
-        // Check if league is not activated
         if (!$league['activated']) {
             $not_activated = true;
         } else {
@@ -54,7 +44,6 @@ if (!$league) {
     }
 }
 
-// Handle AJAX requests
 if (isset($_GET['ajax'])) {
     header('Content-Type: application/json');
     
@@ -129,7 +118,6 @@ if (isset($_GET['ajax'])) {
     
     if ($_GET['ajax'] === 'get_player_stats' && isset($_GET['player_id'])) {
         try {
-            // Get player basic info
             $stmt = $pdo->prepare("
                 SELECT 
                     lp.*,
@@ -150,12 +138,9 @@ if (isset($_GET['ajax'])) {
                 exit();
             }
             
-            // Get league scoring rules
             $stmt = $pdo->prepare("SELECT * FROM league_roles WHERE league_id = ?");
             $stmt->execute([$player['league_id']]);
             $rules = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            // Get player statistics from matches_points
             $stmt = $pdo->prepare("
                 SELECT 
                     COUNT(CASE WHEN scorer = ? THEN 1 END) as goals,
@@ -182,8 +167,6 @@ if (isset($_GET['ajax'])) {
                 $_GET['player_id'], $_GET['player_id']
             ]);
             $stats = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            // Get clean sheets (matches where team didn't concede)
             $cleanSheets = 0;
             $stmt = $pdo->prepare("
                 SELECT COUNT(DISTINCT m.match_id) as clean_sheets
@@ -198,8 +181,6 @@ if (isset($_GET['ajax'])) {
             $stmt->execute([$_GET['player_id']]);
             $csResult = $stmt->fetch(PDO::FETCH_ASSOC);
             $cleanSheets = $csResult['clean_sheets'] ?? 0;
-            
-            // Get number of contributors who have this player in their lineup
             $stmt = $pdo->prepare("
                 SELECT COUNT(DISTINCT user_id) as lineup_count
                 FROM contributor_players
@@ -209,11 +190,7 @@ if (isset($_GET['ajax'])) {
             $stmt->execute([$player['league_id'], $_GET['player_id']]);
             $lineupResult = $stmt->fetch(PDO::FETCH_ASSOC);
             $lineupCount = $lineupResult['lineup_count'] ?? 0;
-
-            // Use total_points from league_players table
             $totalPoints = $player['total_points'] ?? 0;
-
-            // Compile response
             $response = [
                 'player' => $player,
                 'rules' => $rules,
@@ -240,13 +217,11 @@ if (isset($_GET['ajax'])) {
     }
 }
 
-// Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner && !$not_activated) {
     if (isset($_POST['action'])) {
         try {
             switch ($_POST['action']) {
                 case 'add_player':
-                    // For positionless leagues, set player_role to NULL
                     $player_role = $league['positions'] === 'positionless' ? null : $_POST['player_role'];
                     
                     $stmt = $pdo->prepare("
@@ -260,8 +235,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                         $player_role,
                         $_POST['player_price']
                     ]);
-                    
-                    // Update num_of_players in leagues table
+
                     $stmt = $pdo->prepare("
                         UPDATE leagues 
                         SET num_of_players = (SELECT COUNT(*) FROM league_players WHERE league_id = ?)
@@ -273,7 +247,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                     break;
                     
                 case 'update_player':
-                    // For positionless leagues, set player_role to NULL
                     $player_role = $league['positions'] === 'positionless' ? null : $_POST['player_role'];
                     
                     $stmt = $pdo->prepare("
@@ -292,11 +265,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
                     break;
                     
                 case 'delete_player':
-                    // Delete player
                     $stmt = $pdo->prepare("DELETE FROM league_players WHERE player_id = ?");
                     $stmt->execute([$_POST['player_id']]);
-                    
-                    // Update num_of_players in leagues table
                     $stmt = $pdo->prepare("
                         UPDATE leagues 
                         SET num_of_players = (SELECT COUNT(*) FROM league_players WHERE league_id = ?)
@@ -313,7 +283,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$league_not_found && !$not_owner &
     }
 }
 
-// Fetch teams for the league
 if (!$league_not_found && !$not_owner && !$not_activated) {
     try {
         $stmt = $pdo->prepare("
@@ -1148,9 +1117,80 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
                 grid-template-columns: 1fr;
             }
         }
+         /* Loading Spinner Overlay */
+        .loading-spinner-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+        
+        .loading-spinner-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+        
+        .spinner-large {
+            width: 80px;
+            height: 80px;
+            border: 6px solid var(--border-color);
+            border-top: 6px solid var(--gradient-end);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            margin-top: 1.5rem;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .loading-logo {
+            margin-bottom: 2rem;
+        }
+        
+        .loading-logo img {
+            height: 80px;
+            width: auto;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.95); }
+        }
+        
+        body.dark-mode .loading-logo img {
+            content: url('../assets/images/logo white outline.png');
+        }
+        
+        body:not(.dark-mode) .loading-logo img {
+            content: url('../assets/images/logo.png');
+        }
     </style>
 </head>
 <body>
+        <!-- Loading Spinner -->
+    <div class="loading-spinner-overlay" id="loadingSpinner">
+        <div class="loading-logo">
+            <img src="../assets/images/logo white outline.png" alt="Fantazina Logo">
+        </div>
+        <div class="spinner-large"></div>
+        <div class="loading-text">Loading Players Management...</div>
+    </div>
     <?php if (!$league_not_found && !$not_owner && !$not_activated): ?>
     <?php include 'includes/sidebar.php'; ?>
     <?php endif; ?>
@@ -1485,6 +1525,12 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
     <?php endif; ?>
 
     <script>
+        window.addEventListener('load', function() {
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            setTimeout(() => {
+                loadingSpinner.classList.add('hidden');
+            }, 500);
+        });
         let currentTeamId = null;
         let currentTeamName = '';
         let currentPlayerId = null;
@@ -1514,9 +1560,7 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
 
         function loadTeamPlayers(teamId) {
             const tbody = document.getElementById('playersTableBody');
-            
-            // Calculate colspan based on league settings
-            let colspan = 3; // Base: Name, Points, Actions
+            let colspan = 3; 
             if (leaguePositions === 'positions') colspan++;
             if (leagueSystem === 'Budget') colspan++;
             
@@ -1543,9 +1587,7 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
                             tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align: center; padding: 2rem; color: var(--error);">Error: ${players.error}</td></tr>`;
                             return;
                         }
-                    
-                    // Calculate colspan based on league settings
-                    let colspan = 3; // Base: Name, Points, Actions
+                    let colspan = 3; 
                     if (leaguePositions === 'positions') colspan++;
                     if (leagueSystem === 'Budget') colspan++;
                     
@@ -1604,7 +1646,6 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
                 })
                 .catch(error => {
                     console.error('Fetch error:', error);
-                    // Calculate colspan for error message
                     let colspan = 3;
                     if (leaguePositions === 'positions') colspan++;
                     if (leagueSystem === 'Budget') colspan++;
@@ -1763,8 +1804,6 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
                         
                         <div class="stats-container">
                     `;
-                    
-                    // Goals
                     const goalPoints = isPositionless ? calculatePositionlessGoalPoints(stats.goals, rules) : calculateGoalPoints(player.player_role, stats.goals, rules);
                     statsHtml += `
                         <div class="stat-card">
@@ -1774,8 +1813,7 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
                             <div style="font-size: 0.85rem; color: var(--success); margin-top: 0.5rem;">+${goalPoints} pts</div>
                         </div>
                     `;
-                    
-                    // Assists
+
                     const assistPoints = isPositionless ? calculatePositionlessAssistPoints(stats.assists, rules) : calculateAssistPoints(player.player_role, stats.assists, rules);
                     statsHtml += `
                         <div class="stat-card">
@@ -1785,8 +1823,7 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
                             <div style="font-size: 0.85rem; color: var(--success); margin-top: 0.5rem;">+${assistPoints} pts</div>
                         </div>
                     `;
-                    
-                    // Clean Sheets - show for all players in positionless, only GK/DEF in positions
+
                     if (isPositionless || player.player_role === 'GK' || player.player_role === 'DEF') {
                         const csPoints = isPositionless ? calculatePositionlessCleanSheetPoints(stats.clean_sheets, rules) : calculateCleanSheetPoints(player.player_role, stats.clean_sheets, rules);
                         statsHtml += `
@@ -1798,8 +1835,7 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
                             </div>
                         `;
                     }
-                    
-                    // Penalties Saved - show for all players in positionless, only GK in positions
+
                     if (isPositionless || player.player_role === 'GK') {
                         const penSavePoints = (stats.penalties_saved * (rules?.gk_save_penalty || 0));
                         statsHtml += `
@@ -1811,8 +1847,7 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
                             </div>
                         `;
                     }
-                    
-                    // Penalties Missed
+
                     const penMissPoints = (stats.penalties_missed * (rules?.miss_penalty || 0));
                     statsHtml += `
                         <div class="stat-card">
@@ -1822,8 +1857,7 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
                             <div style="font-size: 0.85rem; color: var(--error); margin-top: 0.5rem;">${penMissPoints} pts</div>
                         </div>
                     `;
-                    
-                    // Yellow Cards
+
                     const yellowPoints = (stats.yellow_cards * (rules?.yellow_card || 0));
                     statsHtml += `
                         <div class="stat-card">
@@ -1833,8 +1867,7 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
                             <div style="font-size: 0.85rem; color: var(--error); margin-top: 0.5rem;">${yellowPoints} pts</div>
                         </div>
                     `;
-                    
-                    // Red Cards
+
                     const redPoints = (stats.red_cards * (rules?.red_card || 0));
                     statsHtml += `
                         <div class="stat-card">
@@ -1844,8 +1877,7 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
                             <div style="font-size: 0.85rem; color: var(--error); margin-top: 0.5rem;">${redPoints} pts</div>
                         </div>
                     `;
-                    
-                    // Bonus Events
+
                     statsHtml += `
                         <div class="stat-card">
                             <span class="stat-card-icon">⭐</span>
@@ -1854,8 +1886,7 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
                             <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.5rem;">Performance bonuses</div>
                         </div>
                     `;
-                    
-                    // Minus Events
+
                     statsHtml += `
                         <div class="stat-card">
                             <span class="stat-card-icon">⚠️</span>
@@ -1866,8 +1897,6 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
                     `;
                     
                     statsHtml += `</div>`;
-                    
-                    // Add league scoring rules info
                     if (rules) {
                         statsHtml += `
                             <div class="info-card">
@@ -1876,7 +1905,6 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
                         `;
                         
                         if (isPositionless) {
-                            // For positionless leagues, show all possible scoring options
                             statsHtml += `
                                 <strong>Positionless League - All Actions Available:</strong><br>
                                 • Goal (GK): +${rules.gk_score || 0} points<br>
@@ -1974,7 +2002,6 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
             }
         }
 
-        // Positionless scoring functions - use highest value from all positions
         function calculatePositionlessGoalPoints(goals, rules) {
             if (!rules) return 0;
             const gkPoints = goals * (rules.gk_score || 0);
@@ -2010,7 +2037,6 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
             return roles[role] || role;
         }
 
-        // Close modals when clicking outside
         document.querySelectorAll('.modal-overlay').forEach(modal => {
             modal.addEventListener('click', function(e) {
                 if (e.target === this) {
@@ -2020,7 +2046,6 @@ if (!$league_not_found && !$not_owner && !$not_activated) {
             });
         });
 
-        // Close modals with Escape key
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 document.querySelectorAll('.modal-overlay.active').forEach(modal => {

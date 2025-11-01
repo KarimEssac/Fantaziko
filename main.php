@@ -959,7 +959,7 @@ transition: opacity 0.5s ease, visibility 0.5s ease;
     }
 
     .modal-content {
-        background: var(--card-bg);
+        background: #ffffffff;
         border: 1px solid var(--border-color);
         border-radius: 25px;
         padding: 3rem;

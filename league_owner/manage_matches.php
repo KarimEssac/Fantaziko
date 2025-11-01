@@ -1139,9 +1139,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                 flex-direction: column;
             }
         }
+        /* Loading Spinner Overlay */
+        .loading-spinner-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+        
+        .loading-spinner-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+        
+        .spinner-large {
+            width: 80px;
+            height: 80px;
+            border: 6px solid var(--border-color);
+            border-top: 6px solid var(--gradient-end);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            margin-top: 1.5rem;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .loading-logo {
+            margin-bottom: 2rem;
+        }
+        
+        .loading-logo img {
+            height: 80px;
+            width: auto;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(0.95); }
+        }
+        
+        body.dark-mode .loading-logo img {
+            content: url('../assets/images/logo white outline.png');
+        }
+        
+        body:not(.dark-mode) .loading-logo img {
+            content: url('../assets/images/logo.png');
+        }
+
     </style>
 </head>
 <body>
+        <!-- Loading Spinner -->
+    <div class="loading-spinner-overlay" id="loadingSpinner">
+        <div class="loading-logo">
+            <img src="../assets/images/logo white outline.png" alt="Fantazina Logo">
+        </div>
+        <div class="spinner-large"></div>
+        <div class="loading-text">Loading Matches Management...</div>
+    </div>
     <?php if (!$league_not_found && !$not_owner && !$not_activated): ?>
     <?php include 'includes/sidebar.php'; ?>
     <?php endif; ?>
@@ -1526,17 +1598,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
     <?php endif; ?>
 
     <script>
-        // Store all matches data for filtering
+        window.addEventListener('load', function() {
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            setTimeout(() => {
+                loadingSpinner.classList.add('hidden');
+            }, 500);
+        });
         const allMatchesData = <?php echo json_encode($pdo->query("SELECT team1_id, team2_id, round FROM matches WHERE league_id = " . intval($league_id))->fetchAll(PDO::FETCH_ASSOC)); ?>;
-        
-        // Store all teams data
         const allTeamsData = <?php echo json_encode($teams); ?>;
         
         function filterAvailableTeams() {
             const selectedRound = parseInt(document.getElementById('addRoundInput').value);
             if (!selectedRound) return;
             
-            // Get teams that have already played in this round
             const playedTeams = new Set();
             allMatchesData.forEach(match => {
                 if (parseInt(match.round) === selectedRound) {
@@ -1544,8 +1618,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                     if (match.team2_id) playedTeams.add(parseInt(match.team2_id));
                 }
             });
-            
-            // Rebuild team dropdowns with only available teams
+
             const team1Select = document.getElementById('addTeam1');
             const team2Select = document.getElementById('addTeam2');
             
@@ -1554,11 +1627,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             
             [team1Select, team2Select].forEach(select => {
                 const currentValue = select.value;
-                
-                // Clear all options except the first one
                 select.innerHTML = '<option value="">Select Team</option>';
-                
-                // Add only available teams
                 allTeamsData.forEach(team => {
                     if (!playedTeams.has(parseInt(team.id))) {
                         const option = document.createElement('option');
@@ -1567,8 +1636,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
                         select.appendChild(option);
                     }
                 });
-                
-                // Restore selection if team is still available
                 if (currentValue && !playedTeams.has(parseInt(currentValue))) {
                     select.value = currentValue;
                 }
@@ -1581,15 +1648,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
         }
 
         function openAddMatchModal() {
-            // Reset form
             document.getElementById('addRoundInput').value = <?php echo $league['round']; ?>;
             document.getElementById('addTeam1').value = '';
             document.getElementById('addTeam2').value = '';
-            
-            // Filter teams based on default round
             filterAvailableTeams();
-            
-            // Validate team selection on change
             const team1 = document.getElementById('addTeam1');
             const team2 = document.getElementById('addTeam2');
             
@@ -1623,8 +1685,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             document.getElementById('editTeam2').value = match.team2_id;
             document.getElementById('editTeam1Score').value = match.team1_score;
             document.getElementById('editTeam2Score').value = match.team2_score;
-            
-            // Validate team selection on change
             const team1 = document.getElementById('editTeam1');
             const team2 = document.getElementById('editTeam2');
             
@@ -1666,8 +1726,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             document.getElementById('deleteMatchModal').classList.remove('active');
             document.body.style.overflow = '';
         }
-
-        // Close modals when clicking outside
         document.querySelectorAll('.modal-overlay').forEach(modal => {
             modal.addEventListener('click', function(e) {
                 if (e.target === this) {
@@ -1677,7 +1735,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$not_owner && !$not_activated && !
             });
         });
 
-        // Close modals with Escape key
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 document.querySelectorAll('.modal-overlay.active').forEach(modal => {

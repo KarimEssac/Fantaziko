@@ -1,4 +1,3 @@
-<!-- Header -->
 <header class="header">
     <div class="header-left">
         <button class="menu-toggle" id="menuToggle">
@@ -21,7 +20,6 @@
 </header>
 
 <style>
-/* Header */
 .header {
     position: fixed;
     top: 0;
@@ -149,8 +147,6 @@
     .header-left {
         gap: 0.8rem;
     }
-
-    /* Move back button to make room for hamburger */
     .back-btn {
         margin-left: 0;
     }
@@ -209,7 +205,6 @@
 </style>
 
 <script>
-// Theme handling
 (function() {
     const savedTheme = localStorage.getItem('theme');
     const body = document.body;
@@ -221,7 +216,6 @@
     }
 })();
 
-// Theme toggle
 const themeToggle = document.getElementById('themeToggle');
 const body = document.body;
 const themeIcon = themeToggle ? themeToggle.querySelector('i') : null;
@@ -250,7 +244,6 @@ if (themeToggle && themeIcon) {
     });
 }
 
-// Mobile sidebar toggle
 const menuToggle = document.getElementById('menuToggle');
 const sidebar = document.querySelector('.sidebar');
 
@@ -258,8 +251,6 @@ if (menuToggle && sidebar) {
     menuToggle.addEventListener('click', () => {
         sidebar.classList.toggle('active');
     });
-
-    // Close sidebar when clicking outside on mobile
     document.addEventListener('click', (e) => {
         if (window.innerWidth <= 1024) {
             if (!sidebar.contains(e.target) && !menuToggle.contains(e.target)) {

@@ -146,3 +146,23 @@
     token CHAR(8) UNIQUE NOT NULL,
     FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE
 );
+
+12- communication_tickets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    status ENUM('open', 'solved', 'closed') DEFAULT 'open',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    closed_at TIMESTAMP NULL,
+    FOREIGN KEY (user_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+13- ticket_messages (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ticket_id INT NOT NULL,
+    sender_type ENUM('user', 'admin') NOT NULL,
+    sender_id INT NOT NULL,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (ticket_id) REFERENCES communication_tickets(id) ON DELETE CASCADE
+);

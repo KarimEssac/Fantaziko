@@ -9,24 +9,19 @@ if (!isset($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 $username = $_SESSION['username'];
-
-// Get next available league ID
 $stmt = $pdo->query("SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'leagues'");
 $next_league_id = $stmt->fetchColumn();
 
-// Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
-        // Get form data
+
         $league_name = trim($_POST['league_name']);
         $num_of_players = intval($_POST['num_of_players']);
         $num_of_teams = intval($_POST['num_of_teams']);
         $system = $_POST['system'];
         $positions = $_POST['positions'];
-        
-        // League roles points
+
         if ($positions === 'positionless') {
-            // For positionless mode, all positions share same values
             $universal_score = intval($_POST['universal_score']);
             $universal_assist = intval($_POST['universal_assist']);
             $universal_clean_sheet = intval($_POST['universal_clean_sheet']);
@@ -34,8 +29,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $miss_penalty = intval($_POST['miss_penalty']);
             $yellow_card = intval($_POST['yellow_card']);
             $red_card = intval($_POST['red_card']);
-            
-            // Set all roles to universal values
             $gk_score = $universal_score;
             $gk_assist = $universal_assist;
             $gk_clean_sheet = $universal_clean_sheet;
@@ -47,7 +40,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $for_score = $universal_score;
             $for_assist = $universal_assist;
         } else {
-            // For positions mode, get individual role values
             $gk_save_penalty = intval($_POST['gk_save_penalty']);
             $gk_score = intval($_POST['gk_score']);
             $gk_assist = intval($_POST['gk_assist']);
@@ -64,19 +56,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $red_card = intval($_POST['red_card']);
         }
         
-        // Power-ups
         $triple_captain = intval($_POST['triple_captain']);
         $bench_boost = intval($_POST['bench_boost']);
         $wild_card = intval($_POST['wild_card']);
-        
-        // Calculate price
         $total_players = $num_of_teams * $num_of_players;
         $price = $total_players * 10;
-        
-        // Start transaction
         $pdo->beginTransaction();
-        
-        // Insert league
         $stmt = $pdo->prepare("
             INSERT INTO leagues (name, owner, num_of_players, num_of_teams, system, positions,
                                triple_captain, bench_boost, wild_card, price, activated)
@@ -88,8 +73,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
         
         $league_id = $pdo->lastInsertId();
-        
-        // Insert league roles
         $stmt = $pdo->prepare("
             INSERT INTO league_roles (league_id, gk_save_penalty, gk_score, gk_assist, 
                                     gk_clean_sheet, def_clean_sheet, def_assist, def_score,
@@ -102,23 +85,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $def_clean_sheet, $def_assist, $def_score, $mid_assist, $mid_score,
             $miss_penalty, $for_score, $for_assist, $yellow_card, $red_card
         ]);
-        
-        // Add owner as contributor with Admin role
         $stmt = $pdo->prepare("
             INSERT INTO league_contributors (user_id, league_id, role, total_score)
             VALUES (?, ?, 'Admin', 0)
         ");
         $stmt->execute([$user_id, $league_id]);
-        
-        // Generate unique token for league
         $token = strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
         $stmt = $pdo->prepare("INSERT INTO league_tokens (league_id, token) VALUES (?, ?)");
         $stmt->execute([$league_id, $token]);
-        
-        // Commit transaction
         $pdo->commit();
-        
-        // Redirect to league dashboard
         header("Location: main.php");
         exit();
         
@@ -1160,7 +1135,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 
     <script>
-        // Theme handling
         (function() {
             const savedTheme = localStorage.getItem('theme');
             const body = document.body;
@@ -1171,8 +1145,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 body.classList.add('dark-mode');
             }
         })();
-
-        // Theme toggle
         const themeToggle = document.getElementById('themeToggle');
         const body = document.body;
         const themeIcon = themeToggle.querySelector('i');
@@ -1198,8 +1170,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 localStorage.setItem('theme', 'light');
             }
         });
-
-        // Multi-step form logic
         let currentStep = 1;
         const totalSteps = 3;
 
@@ -1215,15 +1185,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             document.querySelector(`[data-step="${step}"]`).classList.add('active');
             updateProgress();
             window.scrollTo({ top: 0, behavior: 'smooth' });
-            
-            // Update price on final step
             if (step === 3) {
                 updatePrice();
             }
         }
 
         function nextStep() {
-            // Validate current step
             const currentStepEl = document.querySelector(`[data-step="${currentStep}"]`);
             const inputs = currentStepEl.querySelectorAll('input[required], select[required]');
             let isValid = true;
@@ -1253,34 +1220,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 showStep(currentStep);
             }
         }
-
-        // System option selection
         document.querySelectorAll('.system-option').forEach(option => {
             option.addEventListener('click', function() {
                 const radioInput = this.querySelector('input[type="radio"]');
                 const radioName = radioInput.name;
-                
-                // Remove selected class from all options with same name
                 document.querySelectorAll(`input[name="${radioName}"]`).forEach(input => {
                     input.closest('.system-option').classList.remove('selected');
                 });
-                
-                // Add selected class to clicked option
                 this.classList.add('selected');
                 radioInput.checked = true;
-                
-                // Handle position mode change
                 if (radioName === 'positions') {
                     togglePositionMode(radioInput.value);
                 }
             });
         });
-
-        // Set initial selected systems
         document.querySelector('input[name="system"]:checked').closest('.system-option').classList.add('selected');
         document.querySelector('input[name="positions"]:checked').closest('.system-option').classList.add('selected');
-
-        // Toggle between positions and positionless modes
         function togglePositionMode(mode) {
             const positionsMode = document.getElementById('positionsMode');
             const positionlessMode = document.getElementById('positionlessMode');
@@ -1288,37 +1243,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (mode === 'positionless') {
                 positionsMode.style.display = 'none';
                 positionlessMode.style.display = 'block';
-                
-                // Remove required from positions mode inputs
                 positionsMode.querySelectorAll('input').forEach(input => {
                     input.removeAttribute('required');
                 });
-                
-                // Add required to positionless mode inputs
                 positionlessMode.querySelectorAll('input').forEach(input => {
                     input.setAttribute('required', 'required');
                 });
             } else {
                 positionsMode.style.display = 'block';
                 positionlessMode.style.display = 'none';
-                
-                // Add required to positions mode inputs
                 positionsMode.querySelectorAll('input').forEach(input => {
                     input.setAttribute('required', 'required');
                 });
-                
-                // Remove required from positionless mode inputs
                 positionlessMode.querySelectorAll('input').forEach(input => {
                     input.removeAttribute('required');
                 });
             }
         }
 
-        // Initialize position mode on page load
         const initialPositionMode = document.querySelector('input[name="positions"]:checked').value;
         togglePositionMode(initialPositionMode);
-
-        // Default points system checkbox
         const useDefaultPoints = document.getElementById('useDefaultPoints');
         
         useDefaultPoints.addEventListener('change', function() {
@@ -1333,7 +1277,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             const positionMode = document.querySelector('input[name="positions"]:checked').value;
             
             if (positionMode === 'positions') {
-                // Premier League defaults for positions mode
                 document.getElementById('gk_score').value = 10;
                 document.getElementById('gk_assist').value = 3;
                 document.getElementById('gk_save_penalty').value = 5;
@@ -1353,7 +1296,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 document.getElementById('yellow_card').value = -1;
                 document.getElementById('red_card').value = -3;
             } else {
-                // Positionless mode defaults
                 document.getElementById('universal_score').value = 5;
                 document.getElementById('universal_assist').value = 3;
                 document.getElementById('universal_clean_sheet').value = 4;
@@ -1362,15 +1304,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 document.getElementById('yellow_card_positionless').value = -1;
                 document.getElementById('red_card_positionless').value = -3;
             }
-            
-            // Power-ups defaults
             document.getElementById('triple_captain').value = 1;
             document.getElementById('bench_boost').value = 1;
             document.getElementById('wild_card').value = 1;
         }
 
         function clearAllPoints() {
-            // Clear positions mode
             document.getElementById('gk_score').value = '';
             document.getElementById('gk_assist').value = '';
             document.getElementById('gk_save_penalty').value = '';
@@ -1385,8 +1324,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             document.getElementById('miss_penalty').value = '';
             document.getElementById('yellow_card').value = '';
             document.getElementById('red_card').value = '';
-            
-            // Clear positionless mode
             document.getElementById('universal_score').value = '';
             document.getElementById('universal_assist').value = '';
             document.getElementById('universal_clean_sheet').value = '';
@@ -1394,20 +1331,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             document.getElementById('miss_penalty_positionless').value = '';
             document.getElementById('yellow_card_positionless').value = '';
             document.getElementById('red_card_positionless').value = '';
-            
-            // Clear power-ups
             document.getElementById('triple_captain').value = '';
             document.getElementById('bench_boost').value = '';
             document.getElementById('wild_card').value = '';
         }
-
-        // Update league name display in payment note
         document.getElementById('league_name').addEventListener('input', function() {
             const leagueName = this.value || '[Your League Name]';
             document.getElementById('leagueNameDisplay').textContent = leagueName;
         });
-
-        // Copy to clipboard functions
         function copyToClipboard(text, icon) {
             navigator.clipboard.writeText(text).then(() => {
                 const originalIcon = icon.className;
@@ -1442,7 +1373,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             });
         }
 
-        // Update price calculation
         function updatePrice() {
             const numTeams = parseInt(document.getElementById('num_of_teams').value) || 0;
             const numPlayers = parseInt(document.getElementById('num_of_players').value) || 0;
@@ -1453,19 +1383,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             document.getElementById('priceBreakdown').textContent = 
                 `${numTeams} teams × ${numPlayers} players × 10 EGP = ${price.toLocaleString()} EGP`;
         }
-
-        // Update price when inputs change
         document.getElementById('num_of_teams').addEventListener('input', updatePrice);
         document.getElementById('num_of_players').addEventListener('input', updatePrice);
-
-        // Form submission handling
         document.getElementById('createLeagueForm').addEventListener('submit', function(e) {
             const submitBtn = this.querySelector('.btn-submit');
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating League...';
         });
-
-        // Initialize
         updateProgress();
     </script>
 </body>

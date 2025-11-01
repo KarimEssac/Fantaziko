@@ -1,16 +1,12 @@
 <?php
 session_start();
 require_once 'config/db.php';
-
-// Get token from URL
 $token = trim($_GET['token'] ?? '');
 
-// Store token in session for after signup redirect
 if (!empty($token)) {
     $_SESSION['pending_league_token'] = $token;
 }
 
-// If user is not logged in, redirect to signup
 if (!isset($_SESSION['user_id'])) {
     header("Location: signup.php");
     exit();
@@ -19,7 +15,6 @@ if (!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 $username = $_SESSION['username'];
 
-// Retrieve token from session if not in URL (after signup redirect)
 if (empty($token) && isset($_SESSION['pending_league_token'])) {
     $token = $_SESSION['pending_league_token'];
 }
@@ -28,12 +23,10 @@ $league = null;
 $error = '';
 $already_member = false;
 
-// Validate token and fetch league details
 if (!empty($token)) {
     if (strlen($token) !== 8) {
         $error = 'Invalid token format. Token must be 8 characters.';
     } else {
-        // Find league by token
         $stmt = $pdo->prepare("
             SELECT l.*, lt.token, a.username as owner_name 
             FROM league_tokens lt
@@ -47,20 +40,16 @@ if (!empty($token)) {
         if (!$league) {
             $error = 'League not found. The invitation link may be invalid or expired.';
         } else {
-            // Check if user is already in the league
             $stmt = $pdo->prepare("SELECT * FROM league_contributors WHERE user_id = ? AND league_id = ?");
             $stmt->execute([$user_id, $league['id']]);
             if ($stmt->fetch()) {
                 $already_member = true;
             }
-            
-            // Check if user is the owner
             if ($league['owner'] == $user_id || $league['other_owner'] == $user_id) {
                 $already_member = true;
                 $error = 'You are the owner of this league.';
             }
-            
-            // Get contributor count
+
             $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM league_contributors WHERE league_id = ?");
             $stmt->execute([$league['id']]);
             $contributor_count = $stmt->fetch(PDO::FETCH_ASSOC)['total'];
@@ -70,7 +59,6 @@ if (!empty($token)) {
     $error = 'No league token provided.';
 }
 
-// Handle join league request
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['join_league'])) {
     $league_id = intval($_POST['league_id'] ?? 0);
     
@@ -78,11 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['join_league'])) {
         try {
             $stmt = $pdo->prepare("INSERT INTO league_contributors (user_id, league_id, role, total_score) VALUES (?, ?, 'Contributor', 0)");
             $stmt->execute([$user_id, $league_id]);
-            
-            // Clear the pending token from session
             unset($_SESSION['pending_league_token']);
-            
-            // Redirect to main dashboard
             header("Location: main.php");
             exit();
         } catch (PDOException $e) {
@@ -888,7 +872,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['join_league'])) {
     </div>
 
     <script>
-        // Theme handling - Load saved theme immediately
         (function() {
             const savedTheme = localStorage.getItem('theme');
             const body = document.body;
@@ -900,7 +883,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['join_league'])) {
             }
         })();
 
-        // Loading spinner
         window.addEventListener('load', function() {
             const loadingSpinner = document.getElementById('loadingSpinner');
             setTimeout(() => {
@@ -908,12 +890,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['join_league'])) {
             }, 500);
         });
 
-        // Theme toggle
         const themeToggle = document.getElementById('themeToggle');
         const body = document.body;
         const themeIcon = themeToggle.querySelector('i');
 
-        // Set initial icon based on current theme
         if (body.classList.contains('dark-mode')) {
             themeIcon.classList.remove('fa-moon');
             themeIcon.classList.add('fa-sun');
@@ -935,8 +915,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['join_league'])) {
                 localStorage.setItem('theme', 'light');
             }
         });
-
-        // Form submission handling with loading state
         const form = document.querySelector('form');
         if (form) {
             form.addEventListener('submit', function(e) {
@@ -948,7 +926,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['join_league'])) {
             });
         }
 
-        // Add animation to cards on load
         window.addEventListener('load', function() {
             const joinCard = document.querySelector('.join-card');
             if (joinCard) {
@@ -963,12 +940,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['join_league'])) {
             }
         });
 
-        // Prevent form resubmission on page refresh
         if (window.history.replaceState) {
             window.history.replaceState(null, null, window.location.href);
         }
 
-        // Add hover effect to info boxes
         document.querySelectorAll('.info-box').forEach(box => {
             box.addEventListener('mouseenter', function() {
                 this.style.transform = 'translateY(-5px) scale(1.02)';
@@ -979,7 +954,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['join_league'])) {
             });
         });
 
-        // Smooth scroll behavior
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function (e) {
                 e.preventDefault();
@@ -993,7 +967,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['join_league'])) {
             });
         });
 
-        // Add ripple effect to buttons
         document.querySelectorAll('.btn').forEach(button => {
             button.addEventListener('click', function(e) {
                 const ripple = document.createElement('span');
@@ -1021,8 +994,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['join_league'])) {
                 }, 600);
             });
         });
-
-        // Add ripple animation
         const style = document.createElement('style');
         style.textContent = `
             @keyframes ripple {
@@ -1033,25 +1004,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['join_league'])) {
             }
         `;
         document.head.appendChild(style);
-
-        // Handle back button navigation
         window.addEventListener('pageshow', function(event) {
             if (event.persisted) {
                 window.location.reload();
             }
         });
-
-        // Add keyboard navigation support
         document.addEventListener('keydown', function(e) {
-            // Escape key to go back
             if (e.key === 'Escape') {
                 const cancelBtn = document.querySelector('.btn-outline[href="main.php"]');
                 if (cancelBtn) {
                     window.location.href = 'main.php';
                 }
             }
-            
-            // Enter key to submit form (if focused on page)
             if (e.key === 'Enter' && !e.target.matches('input, textarea, button')) {
                 const submitBtn = document.querySelector('button[name="join_league"]');
                 if (submitBtn && !submitBtn.disabled) {
@@ -1059,8 +1023,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['join_league'])) {
                 }
             }
         });
-
-        // Add focus visible for accessibility
         document.querySelectorAll('.btn, .theme-toggle').forEach(element => {
             element.addEventListener('focus', function() {
                 this.style.outline = '2px solid var(--gradient-end)';
@@ -1071,8 +1033,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['join_league'])) {
                 this.style.outline = 'none';
             });
         });
-
-        // Console welcome message
         console.log('%c🏆 Welcome to Fantazina! 🏆', 'font-size: 20px; font-weight: bold; color: #0A92D7;');
         console.log('%cJoin the league and start your fantasy football journey!', 'font-size: 14px; color: #1D60AC;');
     </script>
